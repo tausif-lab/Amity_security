@@ -1,0 +1,77 @@
+{
+  "run_id": null,
+  "source_vendor": "cisco",
+  "target_vendor": "cisco",
+  "saved_path": "D:\\Security_Compilence\\rag\\normalised_cisco.json",
+  "status": "done",
+  "overall_confidence": 1.0,
+  "confidence_by_category": {},
+  "set_commands": [
+    "hostname pass-thru",
+    "interface GigabitEthernet0/1",
+    " ip address 10.0.0.1 255.255.255.252",
+    " no shutdown",
+    "!"
+  ],
+  "normalized_config": "hostname pass-thru\ninterface GigabitEthernet0/1\n ip address 10.0.0.1 255.255.255.252\n no shutdown\n!",
+  "ir": {
+    "vendor": "cisco",
+    "interfaces": [
+      {
+        "name": "ge-0/0/1",
+        "cisco_name": "GigabitEthernet0/1",
+        "description": null,
+        "ipv4": [
+          "10.0.0.1/30"
+        ],
+        "ipv6": [],
+        "vlan_members": null,
+        "vlan_mode": null,
+        "enabled": true,
+        "mtu": null,
+        "cdp_enabled": true,
+        "ip_ospf": null,
+        "juniper_name": "ge-0/0/1"
+      }
+    ],
+    "vlans": [],
+    "ospf": [],
+    "bgp": [],
+    "static_routes": [],
+    "acls": [],
+    "global_config": {
+      "hostname": "pass-thru",
+      "snmp": {
+        "community_strings": [],
+        "location": null,
+        "contact": null
+      },
+      "logging": {
+        "hosts": [],
+        "buffered": false
+      },
+      "ntp": {
+        "servers": []
+      },
+      "aaa": {
+        "methods": []
+      },
+      "ssh_version": null,
+      "telnet_enabled": false,
+      "motd": null,
+      "cdp_enabled": true,
+      "ip_http_server": false,
+      "ip_dns_servers": [],
+      "raw_commands": []
+    }
+  },
+  "explanations": [],
+  "warnings": [
+    "Target vendor is cisco - config passed through without conversion."
+  ],
+  "unresolved": [],
+  "rounds": 0,
+  "ai_engine_path": "D:\\Security_Compilence\\ai_engine\\normalised_cisco.json",
+  "baseline_path": "D:\\Security_Compilence\\ai_engine\\normalised_cisco_baseline.json",
+  "passthrough": true
+}

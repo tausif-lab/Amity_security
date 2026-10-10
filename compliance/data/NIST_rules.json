@@ -1,0 +1,160 @@
+[
+  {
+    "id": "NIST-SSH-1",
+    "framework": "NISTIR-7966",
+    "name": "SSH version 2 only",
+    "field": "management.ssh_version",
+    "operator": "eq",
+    "expected": 2
+  },
+  {
+    "id": "NIST-SSH-2",
+    "framework": "NISTIR-7966",
+    "name": "Approved authentication methods",
+    "field": "management.ssh.authentication_methods",
+    "operator": "approved_only",
+    "expected": true
+  },
+  {
+    "id": "NIST-SSH-3",
+    "framework": "NISTIR-7966",
+    "name": "SSH inactivity timeout",
+    "field": "management.ssh.inactivity_timeout",
+    "operator": "configured",
+    "expected": true
+  },
+  {
+    "id": "NIST-SSH-4",
+    "framework": "NISTIR-7966",
+    "name": "Authorized key source restrictions",
+    "field": "ssh.authorized_keys.source_restriction",
+    "operator": "configured",
+    "expected": true
+  },
+  {
+    "id": "NIST-SSH-5",
+    "framework": "NISTIR-7966",
+    "name": "Authorized key command restrictions",
+    "field": "ssh.authorized_keys.command_restriction",
+    "operator": "configured",
+    "expected": true
+  },
+  {
+    "id": "CIS-6.10.6",
+    "framework": "CIS",
+    "name": "Telnet is Not Set",
+    "field": "management.telnet",
+    "operator": "exists",
+    "expected": false,
+    "level": "Level 1",
+    "nist_mapping": [
+      "CM-7",
+      "CM-7(1)"
+    ]
+  },
+  {
+    "id": "NIST-AU-2",
+    "framework": "NIST SP 800-53",
+    "name": "Event logging configured",
+    "field": "logging.event_types",
+    "operator": "non_empty",
+    "expected": true
+  },
+  {
+    "id": "NIST-AU-3",
+    "framework": "NIST SP 800-53",
+    "name": "Audit records contain required information",
+    "field": "logging.audit_record_content",
+    "operator": "contains_all",
+    "expected": [
+      "event_type",
+      "timestamp",
+      "location",
+      "source",
+      "outcome",
+      "identity"
+    ]
+  },
+  {
+    "id": "NIST-AU-6",
+    "framework": "NIST SP 800-53",
+    "name": "Audit records are reviewed and analyzed",
+    "field": "logging.review_analysis",
+    "operator": "configured",
+    "expected": true
+  },
+  {
+    "id": "NIST-AU-8",
+    "framework": "NIST SP 800-53",
+    "name": "Audit records contain time stamps",
+    "field": "logging.timestamp",
+    "operator": "configured",
+    "expected": true
+  },
+  {
+    "id": "NIST-AU-12",
+    "framework": "NIST SP 800-53",
+    "name": "Audit records are generated",
+    "field": "logging.audit_generation",
+    "operator": "configured",
+    "expected": true
+  },
+  {
+    "id": "NIST-SC-45",
+    "framework": "NIST SP 800-53",
+    "name": "System Time Synchronization",
+    "field": "system.time_sync",
+    "operator": "configured",
+    "expected": true
+  },
+  {
+    "id": "NIST-SC-8",
+    "framework": "NIST SP 800-53",
+    "name": "Transmission Confidentiality and Integrity",
+    "field": "network.transmission_protection",
+    "operator": "configured",
+    "expected": true
+  },
+  {
+    "id": "NIST-IA-2",
+    "framework": "NIST SP 800-53",
+    "name": "Identification and Authentication",
+    "field": "authentication.user_authentication",
+    "operator": "configured",
+    "expected": true
+  },
+  {
+    "id": "NIST-IA-3",
+    "framework": "NIST SP 800-53",
+    "name": "Device Identification and Authentication",
+    "field": "authentication.device_authentication",
+    "operator": "configured",
+    "expected": true
+  },
+  {
+    "id": "NIST-AAA",
+    "framework": "NIST SP 800-53",
+    "name": "Authentication and Access Control",
+    "checks": {
+      "authentication": "authentication.user_authentication",
+      "authorization": "access.authorization",
+      "accounting": "logging.audit_records"
+    }
+  },
+  {
+    "id": "NIST-IA-5(1)",
+    "framework": "NIST SP 800-53",
+    "name": "Password Protection",
+    "field": "authentication.password_storage",
+    "operator": "secure",
+    "expected": true
+  },
+  {
+    "id": "NIST-SI-4",
+    "framework": "NIST SP 800-53",
+    "name": "System Monitoring",
+    "field": "monitoring.system_monitoring",
+    "operator": "configured",
+    "expected": true
+  }
+]

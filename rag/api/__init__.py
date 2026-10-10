@@ -1,0 +1,1 @@
+"""rag.api -- FastAPI layer for the rag translator + chatbot."""

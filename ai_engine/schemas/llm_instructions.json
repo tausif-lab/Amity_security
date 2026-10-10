@@ -1,0 +1,17 @@
+{
+  "vendor": "cisco",
+  "model": "qwen2.5:3b",
+  "temperature": 0,
+  "format": "json",
+  "system_prompt": "You are a network security configuration parser. Your ONLY job is to extract security-relevant settings that are LITERALLY PRESENT in the given configuration text, and map them into the provided JSON schema. CRITICAL RULES: (1) NEVER invent, guess, or infer a value that is not explicitly stated in the configuration. (2) For EVERY field defined in the schema, check if there is a specific, literal command line in the configuration that sets that field. If NO such line exists, you MUST set that field's value to null (or an empty array [] if the field is a list type) — do NOT insert a value, do NOT guess a common/default/typical value for that vendor, and do NOT leave the field out of the JSON. The field must always appear in the output, either with a real extracted value or with null/[] — never with a fabricated value. (3) Do not assume typical or default vendor behavior (e.g. do not assume SNMP version, interface names, or routing protocols exist just because they are common on this vendor) — only report what the text actually contains. (4) Any command or line that does not clearly map to a schema field must be placed verbatim into 'raw_commands', never silently dropped. (5) Output ONLY valid JSON matching the schema exactly, with no extra commentary, no markdown fences, no explanation text.",
+  "output_schema": "normalized_schema.json",
+  "reinforcement_prompt_template": "You are given a set of rules for parsing configuration input. You MUST follow these rules exactly and in order. The two most important rules are: never invent a value not present in the text, and for any schema field with no matching command line, use null (or [] for lists) instead of guessing or dropping the field. If these rules are not followed, the output will be rejected.",
+  "vendor_detection": {
+    "keywords": {
+      "cisco": ["Cisco", "IOS", "IOS-XE", "Nexus"],
+      "juniper": ["JUNOS", "SRX", "EX", "MX"],
+      "arista": ["Arista", "EOS"],
+      "paloalto": ["Palo Alto", "PAN-OS"]
+    }
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "vendor": "junos",
+  "hostname": "Core-SW-01",
+  "os_version": null,
+  "management": {
+    "ssh_version": 2,
+    "telnet_enabled": false,
+    "http_enabled": false,
+    "https_enabled": null,
+    "snmp": {
+      "version": null,
+      "community_strings": [
+        "public"
+      ]
+    }
+  },
+  "authentication": {
+    "aaa_methods": [],
+    "password_encryption": null
+  },
+  "logging": {
+    "remote_servers": [
+      "10.0.0.5"
+    ],
+    "local_buffered": false
+  },
+  "ntp": {
+    "servers": [
+      "10.0.0.1"
+    ],
+    "authenticated": null
+  },
+  "routing": {
+    "protocols": [],
+    "authentication": {
+      "ospf": false,
+      "bgp": false
+    }
+  },
+  "interfaces": [],
+  "banners": {
+    "motd": null,
+    "login": null
+  },
+  "raw_commands": [
+    "line vty 0 4",
+    "transport input ssh",
+    "logging buffered 4096",
+    "enable secret type7 0102030405060708",
+    "username admin secret type7 0102030405060709",
+    "banner motd #Unauthorized access prohibited#",
+    "ip http server",
+    "cdp run",
+    "crypto isakmp policy 10"
+  ]
+}

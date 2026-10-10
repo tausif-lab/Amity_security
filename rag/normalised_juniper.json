@@ -1,0 +1,571 @@
+{
+  "run_id": 10,
+  "source_vendor": "cisco",
+  "target_vendor": "juniper",
+  "saved_path": "D:\\Security_Compilence\\rag\\normalised_juniper.json",
+  "status": "review",
+  "overall_confidence": 0.879,
+  "confidence_by_category": {
+    "Global Systems": 1.0,
+    "LLM Assisted": 0.67,
+    "Other": 0.96,
+    "Unmapped": 0.2
+  },
+  "set_commands": [
+    "set system services ssh",
+    "set system syslog file messages any any",
+    "set system login user admin secret type7 0102030405060709",
+    "set system login message #Unauthorized access prohibited#",
+    "set protocols lldp interface all",
+    "set system host-name Core-SW-01",
+    "set interfaces vty",
+    "set system http server",
+    "set system ntp server 10.0.0.1",
+    "set snmp community public authorization read-only",
+    "set system syslog host 10.0.0.5",
+    "set system services ssh protocol-version v2",
+    "set security ike policy 10",
+    "# UNMAPPED: enable secret type7 0102030405060708",
+    "#   reason: No verified Junos equivalent for 'enable secret type7 0102030405060708'. Manual review required."
+  ],
+  "normalized_config": "set system services ssh\nset system syslog file messages any any\nset system login user admin secret type7 0102030405060709\nset system login message #Unauthorized access prohibited#\nset protocols lldp interface all\nset system host-name Core-SW-01\nset interfaces vty\nset system http server\nset system ntp server 10.0.0.1\nset snmp community public authorization read-only\nset system syslog host 10.0.0.5\nset system services ssh protocol-version v2\nset security ike policy 10\n# UNMAPPED: enable secret type7 0102030405060708\n#   reason: No verified Junos equivalent for 'enable secret type7 0102030405060708'. Manual review required.",
+  "ir": {
+    "vendor": "cisco",
+    "interfaces": [],
+    "vlans": [],
+    "ospf": [],
+    "bgp": [],
+    "static_routes": [],
+    "acls": [],
+    "global_config": {
+      "hostname": "Core-SW-01",
+      "snmp": {
+        "community_strings": [
+          "public"
+        ],
+        "location": null,
+        "contact": null
+      },
+      "logging": {
+        "hosts": [
+          "10.0.0.5"
+        ],
+        "buffered": false
+      },
+      "ntp": {
+        "servers": [
+          "10.0.0.1"
+        ]
+      },
+      "aaa": {
+        "methods": []
+      },
+      "ssh_version": 2,
+      "telnet_enabled": false,
+      "motd": null,
+      "cdp_enabled": true,
+      "ip_http_server": false,
+      "ip_dns_servers": [],
+      "raw_commands": [
+        "line vty 0 4",
+        "transport input ssh",
+        "logging buffered 4096",
+        "enable secret type7 0102030405060708",
+        "username admin secret type7 0102030405060709",
+        "banner motd #Unauthorized access prohibited#",
+        "ip http server",
+        "cdp run",
+        "crypto isakmp policy 10"
+      ]
+    }
+  },
+  "explanations": [
+    {
+      "source_line": "hostname Core-SW-01",
+      "target_command": "set system host-name Core-SW-01",
+      "mapping": "hostname",
+      "category": "Global Systems",
+      "confidence": 1.0,
+      "validated": true,
+      "llm_assisted": false,
+      "memorized": true,
+      "reasons": [
+        "Hostname",
+        "Cisco: hostname <name>",
+        "Junos: set system host-name <name>",
+        "Matched verified translation memory."
+      ],
+      "evidence": [
+        {
+          "source": "https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/sec_usr_ssh/configuration/xe-16/sec-usr-ssh-xe-16-book/sec-secure-shell-v2.html",
+          "score": 0.7119,
+          "content": "Specifies the hostname.",
+          "section": "Device(config)# hostname host1"
+        },
+        {
+          "source": "https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/sec_usr_ssh/configuration/xe-16/sec-usr-ssh-xe-16-book/sec-secure-shell-v2.html",
+          "score": 0.7119,
+          "content": "Specifies the hostname.",
+          "section": "Device(config)# hostname host1"
+        },
+        {
+          "source": "https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/sec_usr_ssh/configuration/xe-16/sec-usr-ssh-xe-16-book/sec-secure-shell-v2.html",
+          "score": 0.7119,
+          "content": "Specifies the hostname.",
+          "section": "Device(config)# hostname host1"
+        }
+      ]
+    },
+    {
+      "source_line": "ntp server 10.0.0.1",
+      "target_command": "set system ntp server 10.0.0.1",
+      "mapping": "ntp",
+      "category": "Global Systems",
+      "confidence": 1.0,
+      "validated": true,
+      "llm_assisted": false,
+      "memorized": true,
+      "reasons": [
+        "NTP server",
+        "Cisco: ntp server <addr>",
+        "Junos: set system ntp server <addr>",
+        "Matched verified translation memory."
+      ],
+      "evidence": [
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\ntp-configuration-guide.pdf",
+          "score": 0.7404,
+          "content": "This topic provides an overview of the most important RFCs for NTP, highlighting their key contributions and recommendations.",
+          "section": "Relevant RFCs for NTP"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\ntp-configuration-guide.pdf",
+          "score": 0.7404,
+          "content": "This topic provides an overview of the most important RFCs for NTP, highlighting their key contributions and recommendations.",
+          "section": "Relevant RFCs for NTP"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\ntp-configuration-guide.pdf",
+          "score": 0.728,
+          "content": "be configured. • ip-address: The IP address of the time server providing the clock synchronization. • number: NTP version number. The range is 1 to 4. By default, version 4 is selected.",
+          "section": "Before you configure this command, the VRF must"
+        }
+      ]
+    },
+    {
+      "source_line": "snmp-server community public ro",
+      "target_command": "set snmp community public authorization read-only",
+      "mapping": "snmp_community",
+      "category": "Global Systems",
+      "confidence": 1.0,
+      "validated": true,
+      "llm_assisted": false,
+      "memorized": true,
+      "reasons": [
+        "SNMP community",
+        "Cisco: snmp-server community <comm> ro",
+        "Junos: set snmp community <comm> authorization read-only",
+        "Matched verified translation memory."
+      ],
+      "evidence": [
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\text_files\\CISCO_RAG.docx",
+          "score": 0.769,
+          "content": "Refer to Configuring SNMP Support for more information.",
+          "section": "snmp-server community <community_string>view <view_name> RO"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\text_files\\CISCO_RAG.docx",
+          "score": 0.769,
+          "content": "Refer to Configuring SNMP Support for more information.",
+          "section": "snmp-server community <community_string>view <view_name> RO"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\text_files\\CISCO_RAG.docx",
+          "score": 0.769,
+          "content": "Refer to Configuring SNMP Support for more information.",
+          "section": "snmp-server community <community_string>view <view_name> RO"
+        }
+      ]
+    },
+    {
+      "source_line": "logging host 10.0.0.5",
+      "target_command": "set system syslog host 10.0.0.5",
+      "mapping": "logging_host",
+      "category": "Global Systems",
+      "confidence": 1.0,
+      "validated": true,
+      "llm_assisted": false,
+      "memorized": true,
+      "reasons": [
+        "Syslog host",
+        "Cisco: logging host <addr>",
+        "Junos: set system syslog host <addr>",
+        "Matched verified translation memory."
+      ],
+      "evidence": [
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\text_files\\CISCO_RAG.docx",
+          "score": 0.5527,
+          "content": "In order to provide an increased level of consistency when you collect and review log messages, you are advised to statically configure a logging source interface. Accomplished via the logging source-interface interface command, statically configuring a logging source interface ensures that the same IP address appears in all logging messages that are sent from an individual CiscoIOS device. For added stability, you are advised to use a loopback interface as the logging source. This configuration",
+          "section": "Configure Logging Source Interface"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\text_files\\CISCO_RAG.docx",
+          "score": 0.5527,
+          "content": "In order to provide an increased level of consistency when you collect and review log messages, you are advised to statically configure a logging source interface. Accomplished via the logging source-interface interface command, statically configuring a logging source interface ensures that the same IP address appears in all logging messages that are sent from an individual CiscoIOS device. For added stability, you are advised to use a loopback interface as the logging source. This configuration",
+          "section": "Configure Logging Source Interface"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\text_files\\CISCO_RAG.docx",
+          "score": 0.5527,
+          "content": "In order to provide an increased level of consistency when you collect and review log messages, you are advised to statically configure a logging source interface. Accomplished via the logging source-interface interface command, statically configuring a logging source interface ensures that the same IP address appears in all logging messages that are sent from an individual CiscoIOS device. For added stability, you are advised to use a loopback interface as the logging source. This configuration",
+          "section": "Configure Logging Source Interface"
+        }
+      ]
+    },
+    {
+      "source_line": "ip ssh version 2",
+      "target_command": "set system services ssh protocol-version v2",
+      "mapping": "ssh",
+      "category": "Global Systems",
+      "confidence": 1.0,
+      "validated": true,
+      "llm_assisted": false,
+      "memorized": true,
+      "reasons": [
+        "SSH version",
+        "Cisco: ip ssh version 2",
+        "Junos: set system services ssh protocol-version v2",
+        "Matched verified translation memory."
+      ],
+      "evidence": [
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\text_files\\CISCO_RAG.docx",
+          "score": 0.8712,
+          "content": "Configure SSH version 2.",
+          "section": "ip ssh authentication-retries 5"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\text_files\\CISCO_RAG.docx",
+          "score": 0.8712,
+          "content": "Configure SSH version 2.",
+          "section": "ip ssh authentication-retries 5"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\text_files\\CISCO_RAG.docx",
+          "score": 0.8712,
+          "content": "Configure SSH version 2.",
+          "section": "ip ssh authentication-retries 5"
+        }
+      ]
+    },
+    {
+      "source_line": "line vty 0 4",
+      "target_command": "set interfaces vty",
+      "mapping": "llm_assisted",
+      "category": "LLM Assisted",
+      "confidence": 0.67,
+      "validated": true,
+      "llm_assisted": true,
+      "memorized": false,
+      "reasons": [
+        "LLM-assisted translation (lower confidence)."
+      ],
+      "evidence": [
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\controlling_switch_access_with_passwords_and_privilege_levels.pdf",
+          "score": 0.6594,
+          "content": "the console port (line 0) or the VTY lines (line 0 to 98).",
+          "section": "Enters line configuration mode, and configures"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\controlling_switch_access_with_passwords_and_privilege_levels.pdf",
+          "score": 0.6594,
+          "content": "the console port (line 0) or the VTY lines (line 0 to 98).",
+          "section": "Enters line configuration mode, and configures"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\controlling_switch_access_with_passwords_and_privilege_levels.pdf",
+          "score": 0.6594,
+          "content": "the console port (line 0) or the VTY lines (line 0 to 98).",
+          "section": "Enters line configuration mode, and configures"
+        }
+      ]
+    },
+    {
+      "source_line": "transport input ssh",
+      "target_command": "set system services ssh",
+      "mapping": "table",
+      "category": "Other",
+      "confidence": 1.0,
+      "validated": true,
+      "llm_assisted": false,
+      "memorized": true,
+      "reasons": [
+        "Matched verified translation memory."
+      ],
+      "evidence": [
+        {
+          "source": "https://www.juniper.net/documentation/us/en/software/junos/user-access-evo/user-access/topics/topic-map/junos-software-remote-access-overview.html",
+          "score": 0.6469,
+          "content": "shell (SSH) program to open a connection to a remote device:",
+          "section": "command to use the secure"
+        },
+        {
+          "source": "https://www.juniper.net/documentation/us/en/software/junos/user-access-evo/user-access/topics/topic-map/junos-software-remote-access-overview.html",
+          "score": 0.6469,
+          "content": "shell (SSH) program to open a connection to a remote device:",
+          "section": "command to use the secure"
+        },
+        {
+          "source": "https://www.juniper.net/documentation/us/en/software/junos/user-access-evo/user-access/topics/topic-map/junos-software-remote-access-overview.html",
+          "score": 0.6469,
+          "content": "shell (SSH) program to open a connection to a remote device:",
+          "section": "command to use the secure"
+        }
+      ]
+    },
+    {
+      "source_line": "logging buffered 4096",
+      "target_command": "set system syslog file messages any any",
+      "mapping": "table",
+      "category": "Other",
+      "confidence": 0.95,
+      "validated": true,
+      "llm_assisted": false,
+      "memorized": true,
+      "reasons": [
+        "Matched verified translation memory."
+      ],
+      "evidence": [
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\text_files\\CISCO_RAG.docx",
+          "score": 0.634,
+          "content": "Each log message that is generated by a Cisco IOS XE device is assigned one of eight severities that range from level 0, Emergencies, through level 7, Debug. Unless specifically required, you are advised to avoid logging at level 7. Logging at level 7 produces an elevated CPU load on the device that can lead to device and network instability. The global configuration command logging trap level is used in order to specify which logging messages are sent to remote syslog servers. The level specifi",
+          "section": "Logging Level"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\text_files\\CISCO_RAG.docx",
+          "score": 0.634,
+          "content": "Each log message that is generated by a Cisco IOS XE device is assigned one of eight severities that range from level 0, Emergencies, through level 7, Debug. Unless specifically required, you are advised to avoid logging at level 7. Logging at level 7 produces an elevated CPU load on the device that can lead to device and network instability. The global configuration command logging trap level is used in order to specify which logging messages are sent to remote syslog servers. The level specifi",
+          "section": "Logging Level"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\text_files\\CISCO_RAG.docx",
+          "score": 0.634,
+          "content": "Each log message that is generated by a Cisco IOS XE device is assigned one of eight severities that range from level 0, Emergencies, through level 7, Debug. Unless specifically required, you are advised to avoid logging at level 7. Logging at level 7 produces an elevated CPU load on the device that can lead to device and network instability. The global configuration command logging trap level is used in order to specify which logging messages are sent to remote syslog servers. The level specifi",
+          "section": "Logging Level"
+        }
+      ]
+    },
+    {
+      "source_line": "enable secret type7 0102030405060708",
+      "target_command": "# UNMAPPED: enable secret type7 0102030405060708",
+      "mapping": "unmapped",
+      "category": "Unmapped",
+      "confidence": 0.2,
+      "validated": false,
+      "llm_assisted": false,
+      "memorized": false,
+      "reasons": [
+        "No verified Junos equivalent for 'enable secret type7 0102030405060708'. Manual review required."
+      ],
+      "evidence": [
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\controlling_switch_access_with_passwords_and_privilege_levels.pdf",
+          "score": 0.6518,
+          "content": "From this release, type 0 and 7 enable password and line vty password can be autoconverted to type 6.",
+          "section": "17.8.1"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\controlling_switch_access_with_passwords_and_privilege_levels.pdf",
+          "score": 0.6518,
+          "content": "From this release, type 0 and 7 enable password and line vty password can be autoconverted to type 6.",
+          "section": "17.8.1"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\controlling_switch_access_with_passwords_and_privilege_levels.pdf",
+          "score": 0.6518,
+          "content": "From this release, type 0 and 7 enable password and line vty password can be autoconverted to type 6.",
+          "section": "17.8.1"
+        }
+      ]
+    },
+    {
+      "source_line": "username admin secret type7 0102030405060709",
+      "target_command": "set system login user admin secret type7 0102030405060709",
+      "mapping": "table",
+      "category": "Other",
+      "confidence": 0.95,
+      "validated": true,
+      "llm_assisted": false,
+      "memorized": true,
+      "reasons": [
+        "Matched verified translation memory."
+      ],
+      "evidence": [
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\controlling_switch_access_with_passwords_and_privilege_levels.pdf",
+          "score": 0.5885,
+          "content": "From this release, type 0 and 7 username password can be autoconverted to type 6.",
+          "section": "16.11.1"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\controlling_switch_access_with_passwords_and_privilege_levels.pdf",
+          "score": 0.5885,
+          "content": "From this release, type 0 and 7 username password can be autoconverted to type 6.",
+          "section": "16.11.1"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\controlling_switch_access_with_passwords_and_privilege_levels.pdf",
+          "score": 0.5885,
+          "content": "From this release, type 0 and 7 username password can be autoconverted to type 6.",
+          "section": "16.11.1"
+        }
+      ]
+    },
+    {
+      "source_line": "banner motd #Unauthorized access prohibited#",
+      "target_command": "set system login message #Unauthorized access prohibited#",
+      "mapping": "table",
+      "category": "Other",
+      "confidence": 0.95,
+      "validated": true,
+      "llm_assisted": false,
+      "memorized": true,
+      "reasons": [
+        "Matched verified translation memory."
+      ],
+      "evidence": [
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\configuring_authentication.pdf",
+          "score": 0.6075,
+          "content": "This configuration displays the following login and failed-login banner:",
+          "section": "Device(config)# end"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\configuring_authentication.pdf",
+          "score": 0.6075,
+          "content": "This configuration displays the following login and failed-login banner:",
+          "section": "Device(config)# end"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\configuring_authentication.pdf",
+          "score": 0.6075,
+          "content": "This configuration displays the following login and failed-login banner:",
+          "section": "Device(config)# end"
+        }
+      ]
+    },
+    {
+      "source_line": "ip http server",
+      "target_command": "set system http server",
+      "mapping": "llm_assisted",
+      "category": "LLM Assisted",
+      "confidence": 0.67,
+      "validated": true,
+      "llm_assisted": true,
+      "memorized": false,
+      "reasons": [
+        "LLM-assisted translation (lower confidence)."
+      ],
+      "evidence": [
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\ntp-configuration-guide.pdf",
+          "score": 0.6135,
+          "content": "• ip-address: The IP address of the time server providing",
+          "section": "Step 6"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\ntp-configuration-guide.pdf",
+          "score": 0.6135,
+          "content": "• ip-address: The IP address of the time server providing",
+          "section": "Step 6"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\ntp-configuration-guide.pdf",
+          "score": 0.4596,
+          "content": "Use an IP address that is different from the one you just",
+          "section": "Example: Note"
+        }
+      ]
+    },
+    {
+      "source_line": "cdp run",
+      "target_command": "set protocols lldp interface all",
+      "mapping": "table",
+      "category": "Other",
+      "confidence": 0.95,
+      "validated": true,
+      "llm_assisted": false,
+      "memorized": true,
+      "reasons": [
+        "Matched verified translation memory."
+      ],
+      "evidence": [
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\ntp-configuration-guide.pdf",
+          "score": 0.3271,
+          "content": "EXEC mode.",
+          "section": "Exits line configuration mode and returns to privileged"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\ntp-configuration-guide.pdf",
+          "score": 0.3271,
+          "content": "EXEC mode.",
+          "section": "Exits line configuration mode and returns to privileged"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\secure_shell_version_2_support.pdf",
+          "score": 0.3271,
+          "content": "EXEC mode.",
+          "section": "Exits privilegedEXEC mode and returns to user"
+        }
+      ]
+    },
+    {
+      "source_line": "crypto isakmp policy 10",
+      "target_command": "set security ike policy 10",
+      "mapping": "llm_assisted",
+      "category": "LLM Assisted",
+      "confidence": 0.67,
+      "validated": true,
+      "llm_assisted": true,
+      "memorized": false,
+      "reasons": [
+        "LLM-assisted translation (lower confidence)."
+      ],
+      "evidence": [
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\configuring_authentication.pdf",
+          "score": 0.4522,
+          "content": "Enables authentication for ARAP users.",
+          "section": "Example:"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\configuring_authentication.pdf",
+          "score": 0.4522,
+          "content": "Enables authentication for ARAP users.",
+          "section": "Example:"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\configuring_authentication.pdf",
+          "score": 0.4522,
+          "content": "Enables authentication for ARAP users.",
+          "section": "Example:"
+        }
+      ]
+    }
+  ],
+  "warnings": [
+    "enable secret type7 0102030405060708: No verified Junos equivalent for 'enable secret type7 0102030405060708'. Manual review required."
+  ],
+  "unresolved": [
+    "enable secret type7 0102030405060708"
+  ],
+  "rounds": 3,
+  "ai_engine_path": "D:\\Security_Compilence\\ai_engine\\normalised_juniper.json",
+  "baseline_path": "D:\\Security_Compilence\\ai_engine\\normalised_juniper_baseline.json",
+  "passthrough": false
+}

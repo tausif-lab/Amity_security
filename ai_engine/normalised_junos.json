@@ -1,0 +1,309 @@
+{
+  "run_id": 27,
+  "source_vendor": "cisco",
+  "target_vendor": "junos",
+  "saved_path": "/Users/tausifkhan/Documents/Security_compliance_amity/SIH26-main/rag/normalised_junos.json",
+  "status": "review",
+  "overall_confidence": 0.685,
+  "confidence_by_category": {
+    "Global Systems": 0.944,
+    "Unmapped": 0.2,
+    "Other": 0.78
+  },
+  "set_commands": [
+    "set system services ssh",
+    "set system syslog file messages any any",
+    "set system login user admin secret type7 0102030405060709",
+    "set system login message #Unauthorized access prohibited#",
+    "set protocols lldp interface all",
+    "set system host-name Core-SW-01",
+    "set system ntp server 10.0.0.1",
+    "set snmp community public authorization read-only",
+    "set system syslog host 10.0.0.5",
+    "set system services ssh protocol-version v2",
+    "# UNMAPPED: line vty 0 4",
+    "#   reason: No verified Junos equivalent for 'line vty 0 4'. Manual review required.",
+    "# UNMAPPED: enable secret type7 0102030405060708",
+    "#   reason: No verified Junos equivalent for 'enable secret type7 0102030405060708'. Manual review required.",
+    "# UNMAPPED: ip http server",
+    "#   reason: No verified Junos equivalent for 'ip http server'. Manual review required.",
+    "# UNMAPPED: crypto isakmp policy 10",
+    "#   reason: No verified Junos equivalent for 'crypto isakmp policy 10'. Manual review required."
+  ],
+  "normalized_config": "set system services ssh\nset system syslog file messages any any\nset system login user admin secret type7 0102030405060709\nset system login message #Unauthorized access prohibited#\nset protocols lldp interface all\nset system host-name Core-SW-01\nset system ntp server 10.0.0.1\nset snmp community public authorization read-only\nset system syslog host 10.0.0.5\nset system services ssh protocol-version v2\n# UNMAPPED: line vty 0 4\n#   reason: No verified Junos equivalent for 'line vty 0 4'. Manual review required.\n# UNMAPPED: enable secret type7 0102030405060708\n#   reason: No verified Junos equivalent for 'enable secret type7 0102030405060708'. Manual review required.\n# UNMAPPED: ip http server\n#   reason: No verified Junos equivalent for 'ip http server'. Manual review required.\n# UNMAPPED: crypto isakmp policy 10\n#   reason: No verified Junos equivalent for 'crypto isakmp policy 10'. Manual review required.",
+  "ir": {
+    "vendor": "cisco",
+    "interfaces": [],
+    "vlans": [],
+    "ospf": [],
+    "bgp": [],
+    "static_routes": [],
+    "acls": [],
+    "global_config": {
+      "hostname": "Core-SW-01",
+      "snmp": {
+        "community_strings": [
+          "public"
+        ],
+        "location": null,
+        "contact": null
+      },
+      "logging": {
+        "hosts": [
+          "10.0.0.5"
+        ],
+        "buffered": false
+      },
+      "ntp": {
+        "servers": [
+          "10.0.0.1"
+        ]
+      },
+      "aaa": {
+        "methods": []
+      },
+      "ssh_version": 2,
+      "telnet_enabled": false,
+      "motd": null,
+      "cdp_enabled": true,
+      "ip_http_server": false,
+      "ip_dns_servers": [],
+      "raw_commands": [
+        "line vty 0 4",
+        "transport input ssh",
+        "logging buffered 4096",
+        "enable secret type7 0102030405060708",
+        "username admin secret type7 0102030405060709",
+        "banner motd #Unauthorized access prohibited#",
+        "ip http server",
+        "cdp run",
+        "crypto isakmp policy 10"
+      ]
+    }
+  },
+  "explanations": [
+    {
+      "source_line": "hostname Core-SW-01",
+      "target_command": "set system host-name Core-SW-01",
+      "mapping": "hostname",
+      "category": "Global Systems",
+      "confidence": 0.955,
+      "validated": true,
+      "llm_assisted": false,
+      "memorized": true,
+      "reasons": [
+        "Hostname",
+        "Cisco: hostname <name>",
+        "Junos: set system host-name <name>",
+        "Matched verified translation memory."
+      ],
+      "evidence": []
+    },
+    {
+      "source_line": "ntp server 10.0.0.1",
+      "target_command": "set system ntp server 10.0.0.1",
+      "mapping": "ntp",
+      "category": "Global Systems",
+      "confidence": 0.955,
+      "validated": true,
+      "llm_assisted": false,
+      "memorized": true,
+      "reasons": [
+        "NTP server",
+        "Cisco: ntp server <addr>",
+        "Junos: set system ntp server <addr>",
+        "Matched verified translation memory."
+      ],
+      "evidence": []
+    },
+    {
+      "source_line": "snmp-server community public ro",
+      "target_command": "set snmp community public authorization read-only",
+      "mapping": "snmp_community",
+      "category": "Global Systems",
+      "confidence": 0.94,
+      "validated": true,
+      "llm_assisted": false,
+      "memorized": true,
+      "reasons": [
+        "SNMP community",
+        "Cisco: snmp-server community <comm> ro",
+        "Junos: set snmp community <comm> authorization read-only",
+        "Matched verified translation memory."
+      ],
+      "evidence": []
+    },
+    {
+      "source_line": "logging host 10.0.0.5",
+      "target_command": "set system syslog host 10.0.0.5",
+      "mapping": "logging_host",
+      "category": "Global Systems",
+      "confidence": 0.93,
+      "validated": true,
+      "llm_assisted": false,
+      "memorized": true,
+      "reasons": [
+        "Syslog host",
+        "Cisco: logging host <addr>",
+        "Junos: set system syslog host <addr>",
+        "Matched verified translation memory."
+      ],
+      "evidence": []
+    },
+    {
+      "source_line": "ip ssh version 2",
+      "target_command": "set system services ssh protocol-version v2",
+      "mapping": "ssh",
+      "category": "Global Systems",
+      "confidence": 0.94,
+      "validated": true,
+      "llm_assisted": false,
+      "memorized": true,
+      "reasons": [
+        "SSH version",
+        "Cisco: ip ssh version 2",
+        "Junos: set system services ssh protocol-version v2",
+        "Matched verified translation memory."
+      ],
+      "evidence": []
+    },
+    {
+      "source_line": "line vty 0 4",
+      "target_command": "# UNMAPPED: line vty 0 4",
+      "mapping": "unmapped",
+      "category": "Unmapped",
+      "confidence": 0.2,
+      "validated": false,
+      "llm_assisted": false,
+      "memorized": false,
+      "reasons": [
+        "No verified Junos equivalent for 'line vty 0 4'. Manual review required."
+      ],
+      "evidence": []
+    },
+    {
+      "source_line": "transport input ssh",
+      "target_command": "set system services ssh",
+      "mapping": "table",
+      "category": "Other",
+      "confidence": 0.78,
+      "validated": true,
+      "llm_assisted": false,
+      "memorized": false,
+      "reasons": [],
+      "evidence": []
+    },
+    {
+      "source_line": "logging buffered 4096",
+      "target_command": "set system syslog file messages any any",
+      "mapping": "table",
+      "category": "Other",
+      "confidence": 0.78,
+      "validated": true,
+      "llm_assisted": false,
+      "memorized": false,
+      "reasons": [],
+      "evidence": []
+    },
+    {
+      "source_line": "enable secret type7 0102030405060708",
+      "target_command": "# UNMAPPED: enable secret type7 0102030405060708",
+      "mapping": "unmapped",
+      "category": "Unmapped",
+      "confidence": 0.2,
+      "validated": false,
+      "llm_assisted": false,
+      "memorized": false,
+      "reasons": [
+        "No verified Junos equivalent for 'enable secret type7 0102030405060708'. Manual review required."
+      ],
+      "evidence": []
+    },
+    {
+      "source_line": "username admin secret type7 0102030405060709",
+      "target_command": "set system login user admin secret type7 0102030405060709",
+      "mapping": "table",
+      "category": "Other",
+      "confidence": 0.78,
+      "validated": true,
+      "llm_assisted": false,
+      "memorized": false,
+      "reasons": [],
+      "evidence": []
+    },
+    {
+      "source_line": "banner motd #Unauthorized access prohibited#",
+      "target_command": "set system login message #Unauthorized access prohibited#",
+      "mapping": "table",
+      "category": "Other",
+      "confidence": 0.78,
+      "validated": true,
+      "llm_assisted": false,
+      "memorized": false,
+      "reasons": [],
+      "evidence": []
+    },
+    {
+      "source_line": "ip http server",
+      "target_command": "# UNMAPPED: ip http server",
+      "mapping": "unmapped",
+      "category": "Unmapped",
+      "confidence": 0.2,
+      "validated": false,
+      "llm_assisted": false,
+      "memorized": false,
+      "reasons": [
+        "No verified Junos equivalent for 'ip http server'. Manual review required."
+      ],
+      "evidence": []
+    },
+    {
+      "source_line": "cdp run",
+      "target_command": "set protocols lldp interface all",
+      "mapping": "table",
+      "category": "Other",
+      "confidence": 0.78,
+      "validated": true,
+      "llm_assisted": false,
+      "memorized": false,
+      "reasons": [],
+      "evidence": []
+    },
+    {
+      "source_line": "crypto isakmp policy 10",
+      "target_command": "# UNMAPPED: crypto isakmp policy 10",
+      "mapping": "unmapped",
+      "category": "Unmapped",
+      "confidence": 0.2,
+      "validated": false,
+      "llm_assisted": false,
+      "memorized": false,
+      "reasons": [
+        "No verified Junos equivalent for 'crypto isakmp policy 10'. Manual review required."
+      ],
+      "evidence": []
+    }
+  ],
+  "warnings": [
+    "line vty 0 4: No verified Junos equivalent for 'line vty 0 4'. Manual review required.",
+    "enable secret type7 0102030405060708: No verified Junos equivalent for 'enable secret type7 0102030405060708'. Manual review required.",
+    "ip http server: No verified Junos equivalent for 'ip http server'. Manual review required.",
+    "crypto isakmp policy 10: No verified Junos equivalent for 'crypto isakmp policy 10'. Manual review required."
+  ],
+  "unresolved": [
+    "line vty 0 4",
+    "enable secret type7 0102030405060708",
+    "ip http server",
+    "crypto isakmp policy 10"
+  ],
+  "rounds": 3,
+  "ai_engine_path": "/Users/tausifkhan/Documents/Security_compliance_amity/SIH26-main/ai_engine/normalised_junos.json",
+  "baseline_path": "/Users/tausifkhan/Documents/Security_compliance_amity/SIH26-main/ai_engine/normalised_junos_baseline.json",
+  "passthrough": false,
+  "txt_path": "/Users/tausifkhan/Documents/Security_compliance_amity/SIH26-main/ai_engine/sample_config_to_junos.txt",
+  "ai_engine_handoff": {
+    "success": false,
+    "http_status": 500,
+    "error": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta http-equiv=\"content-type\" content=\"text/html; charset=utf-8\">\n  <meta name=\"robots\" content=\"NONE,NOARCHIVE\">\n  <title>OSError\n          at /api/uploads/</title>\n  <style>\n    html * { padding:0; margin:0; }\n    body * { padding:10px 20px; }\n    body * * { padding:0; }\n    body { font-family: sans-serif; background-color:#fff; color:#000; }\n    body > :where(header, main, footer) { border-bottom:1px solid #ddd; }\n    h1 { font-weight:normal; }\n    "
+  }
+}

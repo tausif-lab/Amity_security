@@ -1,0 +1,4 @@
+! HITL_SINGLE_REVIEW_DEMO
+! Human-in-the-loop normalization demonstration: exactly ONE review item.
+hostname HITL-DEMO-01
+demo-policy secure-remote-access version-two

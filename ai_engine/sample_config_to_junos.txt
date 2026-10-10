@@ -1,0 +1,18 @@
+set system services ssh
+set system syslog file messages any any
+set system login user admin secret type7 0102030405060709
+set system login message #Unauthorized access prohibited#
+set protocols lldp interface all
+set system host-name Core-SW-01
+set system ntp server 10.0.0.1
+set snmp community public authorization read-only
+set system syslog host 10.0.0.5
+set system services ssh protocol-version v2
+# UNMAPPED: line vty 0 4
+#   reason: No verified Junos equivalent for 'line vty 0 4'. Manual review required.
+# UNMAPPED: enable secret type7 0102030405060708
+#   reason: No verified Junos equivalent for 'enable secret type7 0102030405060708'. Manual review required.
+# UNMAPPED: ip http server
+#   reason: No verified Junos equivalent for 'ip http server'. Manual review required.
+# UNMAPPED: crypto isakmp policy 10
+#   reason: No verified Junos equivalent for 'crypto isakmp policy 10'. Manual review required.

@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Network Security Compliance</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <div class="hero">
+        <!-- Left Side: Product Info -->
+        <div class="hero-content">
+          <h1>Network Security<br />Compliance Automation</h1>
+          <p class="subtitle">
+            Analyze network device configurations against CIS and NIST security
+            standards. Automated compliance checking for Cisco and Juniper
+            devices.
+          </p>
+        </div>
+
+        <div class="form-card" style="margin-top: 20px">
+          <h2>Translate Cisco to Juniper</h2>
+          <form id="translateForm">
+            <div class="form-group">
+              <label>Source Vendor</label>
+              <select id="sourceVendor" class="vendor-select" required>
+                <option value="cisco" selected>Cisco</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label>Target Vendor</label>
+              <select id="targetVendor" class="vendor-select" required>
+                <option value="junos" selected>Junos / Juniper</option>
+                <option value="cisco">Cisco (Passthrough)</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="translateFile">Configuration File</label>
+              <div class="file-input-wrapper">
+                <input
+                  type="file"
+                  id="translateFile"
+                  class="config-file-input"
+                  accept=".txt,.conf,.cfg"
+                  required
+                />
+                <label for="translateFile" class="file-input-label">
+                  <span id="translateFileText" class="file-input-text"
+                    >Choose file...</span
+                  >
+                  <span class="file-input-button">Browse</span>
+                </label>
+              </div>
+            </div>
+
+            <button type="submit" class="btn-primary" id="translateSubmitBtn">
+              <span class="btn-text">Translate & Analyze</span>
+              <span class="btn-loader" style="display: none"
+                >Translating via AI...</span
+              >
+            </button>
+          </form>
+          <div id="translateStatusMessage" class="status-message"></div>
+        </div>
+      </div>
+
+      <!-- Right Side: Upload Form -->
+      <div class="hero-form">
+        <div class="form-card">
+          <h2>Upload Configurations</h2>
+
+          <form id="uploadForm">
+            <div id="deviceRowsContainer">
+              <!-- Rows will be injected here via JS -->
+            </div>
+
+            <button
+              type="button"
+              id="addDeviceBtn"
+              class="btn-secondary"
+              style="width: 100%; margin-bottom: 15px"
+            >
+              + Add Another Device
+            </button>
+
+            <button type="submit" class="btn-primary" id="submitBtn">
+              <span class="btn-text">Analyze Configurations</span>
+              <span class="btn-loader" style="display: none">Analyzing...</span>
+            </button>
+          </form>
+
+          <div id="statusMessage" class="status-message"></div>
+        </div>
+        <div class="hero-content upload-info">
+          <h1>Automate Your<br />Compliance Review</h1>
+          <p class="subtitle">
+            Upload network device configurations to compare them against CIS and
+            NIST security standards. Add multiple devices to generate one
+            combined compliance report.
+          </p>
+        </div>
+      </div>
+
+      <!-- Results Section -->
+      <div id="resultsSection" class="results-section" style="display: none">
+        <div class="results-header">
+          <h2>Compliance Report</h2>
+          <button id="downloadPdfBtn" class="btn-secondary">
+            Download Combined PDF
+          </button>
+        </div>
+
+        <div id="reportsContainer">
+          <!-- Individual device report cards rendered here -->
+        </div>
+        <section id="humanInterventionSection" class="human-intervention global-human-intervention" hidden></section>
+      </div>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>
