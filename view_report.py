@@ -1,5 +1,15 @@
 # view_report.py — run as: python view_report.py <upload_id>
 import sys
+
+# The pass/fail marks are emoji, which the default Windows console codec
+# (cp1252) cannot encode - printing them raised UnicodeEncodeError and killed
+# the report halfway through. Force UTF-8 output so the report always renders.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
 import requests
 
 upload_id = sys.argv[1]

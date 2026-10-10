@@ -128,9 +128,12 @@ class UploadEndpointTests(TestCase):
         )
 
     def _fake_normalizer(self, baseline):
-        from ai_engine.services.ollama_client import normalize_config
+        # The view calls normalize_config_checked (which wraps the single
+        # normalize_config call with the dual-call agreement check) and expects
+        # a (baseline, status, disagreements) triple.
         return mock.patch(
-            "core.views.normalize_config", side_effect=lambda *a, **k: dict(baseline))
+            "core.views.normalize_config_checked",
+            side_effect=lambda *a, **k: (dict(baseline), "agreed", []))
 
     def test_requires_a_file(self):
         response = self.client.post("/api/uploads/", {"vendor": "cisco"})
@@ -177,7 +180,8 @@ class UploadEndpointTests(TestCase):
         self.assertEqual(result["summary"]["total"], 8)
 
     def test_normalizer_failure_is_reported_not_raised(self):
-        with mock.patch("core.views.normalize_config", side_effect=RuntimeError("ollama down")):
+        with mock.patch("core.views.normalize_config_checked",
+                        side_effect=RuntimeError("ollama down")):
             response = self._upload("hostname r1\nip ssh version 2\n")
         result = response.json()["results"][0]
         self.assertEqual(result["status"], "failed")
@@ -207,6 +211,91 @@ class UploadEndpointTests(TestCase):
         body = response.json()
         self.assertEqual(body["count"], 2)
         self.assertTrue(all(r["status"] == "done" for r in body["results"]))
+
+
+class CacheLayerTests(UploadEndpointTests):
+    """Layer 1: a repeat upload must skip the model entirely."""
+
+    def setUp(self):
+        super().setUp()
+        from core.models import NormalizationCache
+        NormalizationCache.objects.all().delete()
+
+    def test_second_identical_upload_skips_the_llm(self):
+        text = "hostname r1\nip ssh version 2\nntp server 10.0.0.1\n"
+        with self._fake_normalizer(GOOD_BASELINE) as normalizer:
+            first = self._upload(text).json()["results"][0]
+            second = self._upload(text).json()["results"][0]
+            calls_after_both = normalizer.call_count
+
+        self.assertEqual(first["cache_status"], "miss")
+        self.assertEqual(second["cache_status"], "hit")
+        # The whole point: the model was consulted exactly once for two uploads.
+        self.assertEqual(calls_after_both, 1)
+        # ...but the report is still produced and identical.
+        self.assertEqual(first["summary"], second["summary"])
+
+    def test_a_different_config_is_not_a_cache_hit(self):
+        with self._fake_normalizer(GOOD_BASELINE) as normalizer:
+            self._upload("hostname r1\nip ssh version 2\n")
+            self._upload("hostname r2\nip ssh version 2\n")
+            self.assertEqual(normalizer.call_count, 2)
+
+    def test_cache_hit_still_runs_the_deterministic_overrides(self):
+        # A cached baseline must not freeze the parser: the config text is still
+        # re-read for facts, so a second upload picks up changes the cache
+        # cannot know about.
+        text = "hostname r1\nip ssh version 2\nip http server\n"
+        with self._fake_normalizer(GOOD_BASELINE):
+            self._upload(text)
+            second = self._upload(text).json()["results"][0]
+        self.assertEqual(second["cache_status"], "hit")
+        # The fixture baseline omits http_enabled; the config says it is on, so
+        # the deterministic layer must say so rather than inheriting Unknown.
+        self.assertIs(second["baseline_json"]["management"]["http_enabled"], True)
+
+    def test_cache_hit_skips_the_dual_call(self):
+        text = "hostname r1\nip ssh version 2\n"
+        with self._fake_normalizer(GOOD_BASELINE) as normalizer:
+            self._upload(text)
+            self._upload(text)
+            self.assertEqual(normalizer.call_count, 1)
+        # Both uploads report the first call's verdict rather than inventing one.
+        response = self.client.get("/api/cache/stats/")
+        self.assertEqual(response.status_code, 200)
+
+
+class DualCallEscalationTests(UploadEndpointTests):
+    """Disagreement escalates to a human only when nothing else can settle it."""
+
+    CONFIG = "hostname r1\nip ssh version 2\nntp server 10.0.0.1\nsnmp-server community public ro\n"
+
+    def _upload_with_disagreements(self, disagreements):
+        with mock.patch("core.views.normalize_config_checked",
+                        side_effect=lambda *a, **k: (dict(GOOD_BASELINE), "diverged", disagreements)), \
+                mock.patch("core.views.store_pending", return_value=999):
+            return self._upload(self.CONFIG).json()["results"][0]
+
+    def test_settled_field_is_not_escalated(self):
+        # ntp.servers is proved from the config text, so a disagreement there is
+        # noise and must not reach the human queue.
+        result = self._upload_with_disagreements(
+            [{"field": "ntp.servers", "call_a": ["10.0.0.1"], "call_b": ["10.9.9.9"]}])
+        self.assertEqual(result["normalization_review"], [])
+        self.assertEqual(result["status"], "done")
+
+    def test_unsettled_field_is_escalated(self):
+        # Nothing proves the SNMP version from the text, so a human must decide.
+        result = self._upload_with_disagreements(
+            [{"field": "management.snmp.version", "call_a": "v3", "call_b": "v1"}])
+        self.assertEqual(len(result["normalization_review"]), 1)
+        self.assertEqual(result["normalization_review"][0]["command"], "management.snmp.version")
+        self.assertEqual(result["status"], "review")
+
+    def test_disagreements_are_always_recorded_for_audit(self):
+        result = self._upload_with_disagreements(
+            [{"field": "ntp.servers", "call_a": ["a"], "call_b": ["b"]}])
+        self.assertEqual(len(result["dual_call_disagreements"]), 1)
 
 
 class HealthEndpointTests(TestCase):

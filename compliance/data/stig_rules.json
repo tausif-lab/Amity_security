@@ -1,0 +1,152 @@
+[
+  {
+    "id": "STIG-CISCO-SSH-1",
+    "framework": "DISA-STIG",
+    "name": "SSH version 2 must be enabled",
+    "field": "management.ssh_version",
+    "operator": "ge",
+    "expected": 2,
+    "severity": "High",
+    "level": "Level 1"
+  },
+  {
+    "id": "STIG-CISCO-TELNET-1",
+    "framework": "DISA-STIG",
+    "name": "Telnet service must be disabled",
+    "field": "management.telnet_enabled",
+    "operator": "eq",
+    "expected": false,
+    "severity": "High",
+    "level": "Level 1"
+  },
+  {
+    "id": "STIG-CISCO-HTTP-1",
+    "framework": "DISA-STIG",
+    "name": "HTTP server service must be disabled",
+    "field": "management.http_enabled",
+    "operator": "eq",
+    "expected": false,
+    "severity": "Medium",
+    "level": "Level 1"
+  },
+  {
+    "id": "STIG-CISCO-HTTPS-1",
+    "framework": "DISA-STIG",
+    "name": "If the HTTP server is used, secure-server (HTTPS) must also be enabled",
+    "field": "management.https_enabled",
+    "operator": "eq",
+    "expected": true,
+    "severity": "Medium",
+    "level": "Level 2"
+  },
+  {
+    "id": "STIG-CISCO-SNMP-1",
+    "framework": "DISA-STIG",
+    "name": "The SNMP community string must not be the default 'public'",
+    "field": "management.snmp.community_strings",
+    "operator": "not_contains_any",
+    "expected": ["public"],
+    "severity": "High",
+    "level": "Level 1"
+  },
+  {
+    "id": "STIG-CISCO-SNMP-2",
+    "framework": "DISA-STIG",
+    "name": "SNMPv1 or SNMPv2c must not be used; SNMPv3 required",
+    "field": "management.snmp.version",
+    "operator": "eq",
+    "expected": "v3",
+    "severity": "High",
+    "level": "Level 1"
+  },
+  {
+    "id": "STIG-CISCO-LOG-1",
+    "framework": "DISA-STIG",
+    "name": "Logging must be enabled to at least one remote syslog server",
+    "field": "logging.remote_servers",
+    "operator": "non_empty",
+    "expected": true,
+    "severity": "Medium",
+    "level": "Level 1"
+  },
+  {
+    "id": "STIG-CISCO-NTP-1",
+    "framework": "DISA-STIG",
+    "name": "At least one NTP server must be configured",
+    "field": "ntp.servers",
+    "operator": "non_empty",
+    "expected": true,
+    "severity": "Low",
+    "level": "Level 1"
+  },
+  {
+    "id": "STIG-CISCO-NTP-2",
+    "framework": "DISA-STIG",
+    "name": "NTP must be configured for authentication",
+    "field": "ntp.authenticated",
+    "operator": "eq",
+    "expected": true,
+    "severity": "Medium",
+    "level": "Level 1"
+  },
+  {
+    "id": "STIG-CISCO-AAA-1",
+    "framework": "DISA-STIG",
+    "name": "AAA services must be enabled for local and remote authentication",
+    "field": "authentication.aaa_methods",
+    "operator": "contains_any",
+    "expected": ["radius", "tacacs+"],
+    "severity": "High",
+    "level": "Level 1"
+  },
+  {
+    "id": "STIG-CISCO-PWD-1",
+    "framework": "DISA-STIG",
+    "name": "Password encryption must use a type 8 (SHA-256) or type 9 algorithm",
+    "field": "authentication.password_encryption",
+    "operator": "in",
+    "expected": ["sha256", "scrypt"],
+    "severity": "High",
+    "level": "Level 1"
+  },
+  {
+    "id": "STIG-CISCO-BANNER-1",
+    "framework": "DISA-STIG",
+    "name": "A legal banner must be configured for login",
+    "field": "banners.motd",
+    "operator": "exists",
+    "expected": true,
+    "severity": "Low",
+    "level": "Level 1"
+  },
+  {
+    "id": "STIG-CISCO-OSPF-1",
+    "framework": "DISA-STIG",
+    "name": "OSPF authentication must be enabled when OSPF is configured",
+    "field": "routing.authentication.ospf",
+    "operator": "eq",
+    "expected": true,
+    "severity": "Medium",
+    "level": "Level 1"
+  },
+  {
+    "id": "STIG-CISCO-BGP-1",
+    "framework": "DISA-STIG",
+    "name": "BGP neighbor authentication must be enabled when BGP is configured",
+    "field": "routing.authentication.bgp",
+    "operator": "eq",
+    "expected": true,
+    "severity": "Medium",
+    "level": "Level 1"
+  },
+  {
+    "id": "STIG-CISCO-IF-1",
+    "framework": "DISA-STIG",
+    "name": "Interface descriptions must be configured on all active interfaces",
+    "field": "interfaces",
+    "operator": "non_empty",
+    "expected": true,
+    "severity": "Low",
+    "level": "Level 2"
+  }
+]

@@ -1,0 +1,122 @@
+[
+  {
+    "id": "ISO-A.8.15-LOGGING",
+    "framework": "ISO27001-2022",
+    "name": "A.8.15 Logging - logs of activities shall be recorded, stored and protected",
+    "field": "logging",
+    "operator": "exists",
+    "expected": true,
+    "severity": "High",
+    "level": "Annex A"
+  },
+  {
+    "id": "ISO-A.8.16-MONITORING",
+    "framework": "ISO27001-2022",
+    "name": "A.8.16 Monitoring activities shall be monitored and results acted upon",
+    "field": "logging.remote_servers",
+    "operator": "non_empty",
+    "expected": true,
+    "severity": "Medium",
+    "level": "Annex A"
+  },
+  {
+    "id": "ISO-A.8.4-CODE-ACCESS",
+    "framework": "ISO27001-2022",
+    "name": "A.8.4 Access to source code - logical access shall be restricted",
+    "field": "authentication.aaa_methods",
+    "operator": "contains_any",
+    "expected": ["radius", "tacacs+", "local"],
+    "severity": "High",
+    "level": "Annex A"
+  },
+  {
+    "id": "ISO-A.5.17-AUTH-INFO",
+    "framework": "ISO27001-2022",
+    "name": "A.5.17 Authentication information - allocation and use shall be controlled",
+    "field": "authentication.password_encryption",
+    "operator": "not_contains_any",
+    "expected": ["plain"],
+    "severity": "High",
+    "level": "Annex A"
+  },
+  {
+    "id": "ISO-A.8.5-SECURE-AUTH",
+    "framework": "ISO27001-2022",
+    "name": "A.8.5 Secure authentication - secure authentication technologies shall be used",
+    "field": "management.ssh_version",
+    "operator": "ge",
+    "expected": 2,
+    "severity": "High",
+    "level": "Annex A"
+  },
+  {
+    "id": "ISO-A.8.2-PRIVILEGED",
+    "framework": "ISO27001-2022",
+    "name": "A.8.2 Privileged access rights - the allocation and use shall be restricted",
+    "field": "management.telnet_enabled",
+    "operator": "eq",
+    "expected": false,
+    "severity": "High",
+    "level": "Annex A"
+  },
+  {
+    "id": "ISO-A.8.9-CONFIG-MGMT",
+    "framework": "ISO27001-2022",
+    "name": "A.8.9 Configuration management - configurations and their documentation shall be established",
+    "field": "hostname",
+    "operator": "exists",
+    "expected": true,
+    "severity": "Medium",
+    "level": "Annex A"
+  },
+  {
+    "id": "ISO-A.8.20-NET-SEC",
+    "framework": "ISO27001-2022",
+    "name": "A.8.20 Networks security - network controls shall be implemented and maintained",
+    "field": "management.http_enabled",
+    "operator": "eq",
+    "expected": false,
+    "severity": "Medium",
+    "level": "Annex A"
+  },
+  {
+    "id": "ISO-A.8.21-CRYPTO-KEYS",
+    "framework": "ISO27001-2022",
+    "name": "A.8.21 Use of cryptographic controls - rules for the effective use of cryptography shall be defined",
+    "field": "ntp.authenticated",
+    "operator": "eq",
+    "expected": true,
+    "severity": "Medium",
+    "level": "Annex A"
+  },
+  {
+    "id": "ISO-A.5.24-INCIDENT-PLAN",
+    "framework": "ISO27001-2022",
+    "name": "A.5.24 Information security incident management - shall be planned and implemented",
+    "field": "logging.local_buffered",
+    "operator": "eq",
+    "expected": true,
+    "severity": "Low",
+    "level": "Annex A"
+  },
+  {
+    "id": "ISO-A.8.19-INSTALL-SOFTWARE",
+    "framework": "ISO27001-2022",
+    "name": "A.8.19 Installation of software - procedures and measures shall be established",
+    "field": "os_version",
+    "operator": "exists",
+    "expected": true,
+    "severity": "Low",
+    "level": "Annex A"
+  },
+  {
+    "id": "ISO-A.8.12-DATA-LEAK",
+    "framework": "ISO27001-2022",
+    "name": "A.8.12 Data leakage prevention - leakage prevention shall be applied to systems",
+    "field": "management.snmp.community_strings",
+    "operator": "not_contains_any",
+    "expected": ["public", "private"],
+    "severity": "High",
+    "level": "Annex A"
+  }
+]

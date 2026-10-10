@@ -1,7 +1,67 @@
 
 # Network Security Compliance Automation
 
-Analyze Cisco IOS and Juniper Junos network-device configurations against CIS and NIST-oriented rules. The application uses Ollama to normalize configurations, evaluates them with deterministic rules, produces JSON/PDF reports, and includes a RAG-assisted **bidirectional** Cisco ↔ Juniper translation service with a human-in-the-loop learning cycle.
+Analyze Cisco IOS and Juniper Junos network-device configurations against CIS, NIST, DISA STIG and ISO/IEC 27001 rules. The application uses Ollama to normalize configurations, evaluates them with deterministic rules, produces JSON/PDF reports, and includes a RAG-assisted **bidirectional** Cisco ↔ Juniper translation service with a human-in-the-loop learning cycle.
+
+## Parser pipeline
+
+Each command line resolves through four layers, cheapest first:
+
+| Layer | What it does | Cost |
+|---|---|---|
+| 1. Cache | Exact-match cache of previous normalizations, keyed on vendor + model + schema + prompt + config text | No LLM call |
+| 2. Heuristics | Regex fact extraction straight from the config text (NTP, logging, HTTP, telnet, SNMP, routing, password hashing) | No LLM call |
+| 3. Mapping DB | pgvector similarity search over human-approved command mappings | No LLM call |
+| 4. RAG + LLM | Constrained Ollama call, grounded in retrieved vendor documentation | Inference |
+
+Only layer 4 calls the model. Layers 1-3 run on every upload, including cache
+hits, so the human-in-the-loop loop always takes effect and the parser never
+freezes on a stale baseline.
+
+**Dual-call confidence check.** Small models cannot reliably self-rate their own
+confidence, so normalization is sampled twice from the same prompt at different
+temperatures. When both calls agree the result is auto-accepted. When they
+disagree, the contested field is only escalated to a human if the deterministic
+layer cannot prove it from the config text; everything else is settled
+automatically. Every disagreement is recorded on the upload.
+
+Set `OLLAMA_DUAL_CHECK=0` to disable the second call. It roughly doubles the
+time for a cache miss; repeat uploads stay fast because of the cache.
+
+## Supported input formats
+
+The ingestion engine detects CLI, JSON, YAML and XML and converts non-CLI input
+to vendor CLI text before normalization, so all four produce the same baseline.
+A file it cannot parse confidently is passed through unmodified rather than
+guessed at. `source_format` on the upload records what was detected.
+
+## Benchmark frameworks
+
+| Framework | Selector | Rules |
+|---|---|---|
+| CIS Benchmark | `CIS` | 8 (Cisco), vendor-specific set for Juniper |
+| NIST SP 800-53 / NISTIR-7966 | `NIST` | 18 |
+| DISA STIG | `STIG` | 15 |
+| ISO/IEC 27001:2022 Annex A | `ISO` | 12 |
+
+Pass `framework` on upload, or re-score an existing upload against another
+framework through `/audit/` without re-normalizing.
+
+> The STIG and ISO rule sets are mapped onto this project's normalized schema
+> field model. Their control names and intent follow the published frameworks,
+> but the rule IDs are this project's own identifiers rather than verbatim
+> official control numbers. Map them to your licensed copy of the benchmarks
+> before presenting them as authoritative.
+
+## Remediation output
+
+`/corrected-config/` returns a config file that can be applied, not the original
+with advice stapled to the end. Deterministic fixes rewrite the offending
+command lines in place (`ip http server` becomes `no ip http server`, a type-7
+secret becomes `algorithm scrypt`, a default SNMP community is commented out);
+settings that are missing are appended; settings that need a real value (AAA
+servers, NTP addresses) are emitted as clearly marked templates; and only rules
+with no deterministic fix fall back to a model proposal.
 
 ## Translation directions
 
@@ -267,6 +327,52 @@ Save the returned `id` and use it in the endpoints below.
 curl.exe "http://127.0.0.1:8000/api/uploads/<upload_id>/"
 ```
 
+### Select a benchmark framework
+
+```powershell
+curl.exe "http://127.0.0.1:8000/api/frameworks/"
+
+curl.exe -X POST "http://127.0.0.1:8000/api/uploads/<upload_id>/audit/" `
+  -H "Content-Type: application/json" `
+  -d '{"framework":"STIG"}'
+```
+
+`framework` can also be sent as a form field on upload. It defaults to `CIS`, so
+existing calls keep working unchanged.
+
+### Download a corrected, compliant config
+
+```powershell
+curl.exe "http://127.0.0.1:8000/api/uploads/<upload_id>/corrected-config/" --output corrected.txt
+```
+
+### Cache statistics
+
+```powershell
+curl.exe "http://127.0.0.1:8000/api/cache/stats/"
+```
+
+Returns hit/miss counts and a measured hit rate. Normally unnecessary to clear:
+the cache key includes the model, schema and prompt, so editing any of them
+retires affected entries. To clear manually:
+
+```powershell
+curl.exe -X POST "http://127.0.0.1:8000/api/cache/clear/" -H "Content-Type: application/json" -d '{}'
+```
+
+### Configuration drift
+
+Compare an upload against another upload of the same device, or against the most
+recent earlier baseline when `against` is omitted. Reports the field-level
+changes and which compliance verdicts they moved.
+
+```powershell
+curl.exe "http://127.0.0.1:8000/api/uploads/<upload_id>/drift/"
+curl.exe "http://127.0.0.1:8000/api/uploads/<upload_id>/drift/?against=<other_upload_id>&framework=CIS"
+
+curl.exe "http://127.0.0.1:8000/api/devices/Core-SW-01/history/"
+```
+
 ### Download a combined PDF report
 
 ```powershell
@@ -308,6 +414,8 @@ python run_tests.py
 | Ollama connection failed | Run `ollama serve`, confirm `ollama list` shows `qwen2.5:3b`, and verify port 11434 is free. |
 | `Ollama has no model named ...` | The configured model is not pulled. Either `ollama pull <model>` or set `OLLAMA_MODEL` to an installed model. |
 | Upload is slow on first run | Local CPU inference generates ~900 tokens; expect 30-90s. `OLLAMA_TIMEOUT` (default 900s) and `OLLAMA_NUM_PREDICT` tune this. |
+| Cache miss is slower than expected | The dual-call check makes two model calls per cache miss. Set `OLLAMA_DUAL_CHECK=0` to make it one. Check `/api/cache/stats/` — re-uploading an unchanged config should be near-instant. |
+| `view_report.py` crashes with `UnicodeEncodeError` | Should not happen; the script forces UTF-8 output. If you see it, run `chcp 65001` first. |
 | RAG indexer cannot create a database | Create `rag_chatbot` manually with a PostgreSQL superuser or grant `CREATEDB` to the RAG database role. |
 | Translation does not work in the frontend | Ensure Django is on port 8000 and `python main.py` is running from the `rag` directory on port 8001. |
 | Browser blocks a local file request | Serve `frontend` through a local web server or open the supplied `frontend/index.html`; Django and FastAPI are configured for development CORS access. |
@@ -315,8 +423,8 @@ python run_tests.py
 ## Project Layout
 
 ```text
-ai_engine/       Ollama normalization and validation
-compliance/      CIS/NIST rule data and remediation logic
+ai_engine/       Ollama normalization, ingestion, dual-call check and validation
+compliance/      CIS/NIST/STIG/ISO rule data, remediation, drift detection
 config/          Django configuration
 core/            Django models and API endpoints
 frontend/        HTML, CSS, and JavaScript interface
@@ -352,7 +460,6 @@ This project is configured for local development. Do not expose either API direc
 To run the project you have to follow some steps
 
 **AI-assisted configuration analysis, compliance reporting, and Cisco-to-Junos translation.**
-
 Analyze network configurations against CIS and NIST rules, translate vendor syntax with a RAG pipeline, and improve future results with human-verified mappings.
 
 Apply the migrations

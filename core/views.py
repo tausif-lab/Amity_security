@@ -12,6 +12,7 @@ from io import BytesIO
 
 import requests
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.http import HttpResponse
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.response import Response
@@ -22,18 +23,26 @@ from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
 from compliance.services.remediation import generate_remediation_commands, execute_remediation, build_corrected_config
+from compliance.services.drift import build_drift_report
 
-from .models import DeviceUpload, RemediationLog
+from .models import DeviceUpload, RemediationLog, ComplianceSnapshot
 from .serializers import DeviceUploadSerializer
-from ai_engine.services.ollama_client import normalize_config, reinforcement_prompt
+from ai_engine.services.ollama_client import (
+    normalize_config, normalize_config_checked, reinforcement_prompt,
+)
 from ai_engine.services.validator import validate_normalized_json
+from ai_engine.services.ingest import ingest
+from .services.normalization_cache import compute_key, get as cache_get, put as cache_put
+from .services.normalization_cache import stats as cache_stats, clear as cache_clear
 from .services.normalization_memory import (
     LOW_CONFIDENCE_THRESHOLD, apply_approved_mappings, config_commands, lookup_config_memories,
     prompt_context, store_pending,
 )
 from compliance.services.rule_engine import compliance_engine
 from .supabase_auth import SupabaseAuthentication, role_required
-from ai_engine.services.fact_extractor import apply_overrides, sanitize, drop_unsupported_interfaces
+from ai_engine.services.fact_extractor import (
+    apply_overrides, sanitize, drop_unsupported_interfaces, deterministic_paths,
+)
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -43,17 +52,56 @@ SCHEMA_PATH = BASE_DIR / "ai_engine" / "schemas" / "normalized_schema.json"
 RULES_PATH = BASE_DIR / "compliance" / "data" / "cis_rules.json"
 RULES_DIR = BASE_DIR / "compliance" / "data"
 
+SUPPORTED_FRAMEWORKS = ("CIS", "NIST", "STIG", "ISO")
+
+FRAMEWORK_RULE_FILES = {
+    "CIS": "cis_rules.json",
+    "NIST": "NIST_rules.json",
+    "STIG": "stig_rules.json",
+    "ISO": "iso_rules.json",
+}
+
+FRAMEWORK_LABELS = {
+    "CIS": "CIS Benchmark",
+    "NIST": "NIST SP 800-53 / NISTIR-7966",
+    "STIG": "DISA STIG",
+    "ISO": "ISO/IEC 27001:2022 Annex A",
+}
+
+
 def _load_json(path: Path) -> dict:
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
+
+def _resolve_framework(value, default="CIS") -> str:
+    framework = (value or default or "").upper().strip()
+    return framework if framework in SUPPORTED_FRAMEWORKS else default
+
+
 def _load_rules(framework, vendor):
+    """Benchmark rules for a framework. Vendor-specific CIS files take priority;
+    the other frameworks are vendor-neutral and apply as written."""
+    framework = _resolve_framework(framework)
     vendor = (vendor or "").lower()
-    if framework == "NIST":
-        return _load_json(RULES_DIR / "NIST_rules.json")
-    if vendor in ("juniper", "junos"):
+    if framework == "CIS" and vendor in ("juniper", "junos"):
         return _load_json(RULES_DIR / "cis_juniper_rules.json")
-    return _load_json(RULES_DIR / "cis_rules.json")
+    return _load_json(RULES_DIR / FRAMEWORK_RULE_FILES[framework])
+
+
+def _take_snapshot(upload, baseline, summary):
+    """Record this upload as a point on the device's audit timeline."""
+    hostname = (baseline or {}).get("hostname")
+    if not hostname:
+        return None
+    try:
+        return ComplianceSnapshot.objects.create(
+            hostname=hostname, vendor=upload.vendor, upload=upload,
+            baseline_json=baseline, summary=summary,
+        )
+    except Exception:
+        # A snapshot is an audit convenience; never fail an upload over it.
+        return None
 
 
 # def _process_single_config(config_text, vendor, instructions, schema, rules):
@@ -63,12 +111,33 @@ def _normalize_single_config(config_text, vendor, instructions, schema):
     upload = DeviceUpload.objects.create(vendor=vendor, status="processing", original_config_text=config_text)
 
     memories = lookup_config_memories(config_text, vendor)
-    try:
-        normalized_data = normalize_config(config_text, instructions, schema, prompt_context(memories))
-    except Exception as e:
-        upload.status = "failed"
-        upload.save()
-        return {"id": str(upload.id), "vendor": vendor, "status": "failed", "error": str(e)}
+
+    # Layer 1: exact-match cache in front of the LLM. The key covers vendor,
+    # model, schema and prompt, so editing any of them retires the cache
+    # automatically. On a hit nothing is inferred at all.
+    cache_key = compute_key(vendor, instructions.get("model", ""), schema,
+                            instructions.get("system_prompt", ""), config_text)
+    cached = cache_get(cache_key)
+    dual_status = "skipped"
+    disagreements = []       # a cache hit performs no call, so it can disagree about nothing
+
+    if isinstance(cached, dict) and cached:
+        normalized_data = json.loads(json.dumps(cached))    # defensive copy
+        cache_status = "hit"
+    else:
+        cache_status = "miss"
+        try:
+            normalized_data, dual_status, disagreements = normalize_config_checked(
+                config_text, instructions, schema, prompt_context(memories))
+        except Exception as e:
+            upload.status = "failed"
+            upload.save()
+            return {"id": str(upload.id), "vendor": vendor, "status": "failed", "error": str(e)}
+        cache_put(cache_key, vendor, instructions.get("model", ""), normalized_data)
+
+    upload.cache_status = cache_status
+    upload.dual_call_status = dual_status
+    upload.save()
 
     if not isinstance(normalized_data, dict):
         upload.status = "failed"
@@ -158,6 +227,25 @@ def _normalize_single_config(config_text, vendor, instructions, schema):
     # to review purely because the model omitted a field we already know.
     normalized_data = apply_overrides(normalized_data, config_text, vendor)
 
+    # Dual-call check: the architecture routes disagreement to human review, but
+    # only for fields that nothing upstream can settle. A field the deterministic
+    # layer proves from the config text is already correct by the time it lands,
+    # so escalating it would only manufacture review noise. Everything the model
+    # disagreed about is still recorded on the upload for the audit trail.
+    settled = deterministic_paths(config_text, vendor)
+    unresolved_disagreements = [d for d in disagreements
+                                if tuple(d["field"].split(".")) not in settled]
+    for item in unresolved_disagreements:
+        review_items.append({
+            "memory_id": store_pending(
+                item["field"], vendor, 0.3,
+                f"Dual-call disagreement: {item['call_a']!r} vs {item['call_b']!r}",
+            ),
+            "command": item["field"],
+            "proposed_meaning": f"Dual-call disagreement: {item['call_a']!r} vs {item['call_b']!r}",
+            "confidence": 0.3,
+        })
+
     # Validate the fully processed baseline, not the raw model output: the
     # deterministic overrides above legitimately add the required `vendor`.
     is_valid, errors = validate_normalized_json(normalized_data, schema)
@@ -176,6 +264,9 @@ def _normalize_single_config(config_text, vendor, instructions, schema):
     return {
         "id": str(upload.id), "vendor": vendor, "status": state,
         "baseline_json": normalized_data,
+        "cache_status": cache_status,
+        "dual_call_status": dual_status,
+        "dual_call_disagreements": disagreements,
         "normalization_review": review_items,
         "memory_matches": [{"command": m["input_command"], "memory_id": m["id"],
                             "similarity": m["similarity"], "status": m["status"]}
@@ -183,7 +274,7 @@ def _normalize_single_config(config_text, vendor, instructions, schema):
     }
 
 
-def _process_single_config(config_text, vendor, instructions, schema, rules):
+def _process_single_config(config_text, vendor, instructions, schema, rules, framework="CIS"):
     """Normalize one config, then run the deterministic compliance engine.
 
     A pending human review does NOT suppress the report: the upload is still
@@ -205,6 +296,8 @@ def _process_single_config(config_text, vendor, instructions, schema, rules):
     baseline = apply_approved_mappings(baseline, memories)
 
     report = compliance_engine(baseline, rules)
+    report["framework"] = _resolve_framework(framework)
+    report["framework_label"] = FRAMEWORK_LABELS[_resolve_framework(framework)]
     upload.baseline_json = baseline
     upload.compliance_report = report
     # "review" means a human decision is still outstanding; "done" means the
@@ -212,10 +305,17 @@ def _process_single_config(config_text, vendor, instructions, schema, rules):
     upload.status = "review" if result.get("normalization_review") else "done"
     upload.save()
 
+    # Point on this device's audit timeline, so a later upload can be diffed
+    # against what the device looked like before.
+    _take_snapshot(upload, baseline, report["summary"])
+
     result["status"] = upload.status
     result["baseline_json"] = baseline
     result["compliance_report"] = report
     result["summary"] = report["summary"]
+    result["framework"] = report["framework"]
+    result["cache_status"] = upload.cache_status
+    result["dual_call_status"] = upload.dual_call_status
     return result
 
 
@@ -261,9 +361,15 @@ def upload_config(request):
     Accepts ONE OR MORE config files (same field name "config", with "vendor"
     repeated once per file in the same order). Each file is processed
     independently and every result carries its own compliance report.
+
+    Optional form fields:
+      framework  CIS | NIST | STIG | ISO   (defaults to CIS)
+    Configs in JSON / YAML / XML are accepted and converted to CLI text by the
+    ingestion engine before normalization.
     """
     files = request.FILES.getlist("config")
     vendors = request.data.getlist("vendor")
+    framework = _resolve_framework(request.data.getlist("framework")[0] if request.data.getlist("framework") else None)
 
     if not files:
         return Response({"error": "No config file(s) provided."}, status=status.HTTP_400_BAD_REQUEST)
@@ -274,21 +380,28 @@ def upload_config(request):
     results = []
     for i, file_obj in enumerate(files):
         vendor = vendors[i] if i < len(vendors) else "unknown"
-        config_text = file_obj.read().decode("utf-8", errors="ignore")
+        raw_text = file_obj.read().decode("utf-8", errors="ignore")
 
-        if len(config_text.strip()) < 10:
+        if len(raw_text.strip()) < 10:
             results.append({"vendor": vendor, "status": "failed",
                             "error": "Config file empty or too short."})
             continue
 
-        rules = _load_rules("CIS", vendor)
+        # Unified ingestion: any supported format becomes CLI text. The raw
+        # upload is still stored, so the original is never lost.
+        config_text, source_format = ingest(raw_text, vendor)
+
+        rules = _load_rules(framework, vendor)
         try:
-            results.append(
-                _process_single_config(config_text, vendor, instructions, schema, rules))
+            outcome = _process_single_config(config_text, vendor, instructions, schema,
+                                             rules, framework)
+            outcome["source_format"] = source_format
+            results.append(outcome)
         except Exception as exc:
             results.append({"vendor": vendor, "status": "failed", "error": str(exc)})
 
-    return Response({"count": len(results), "results": results}, status=status.HTTP_200_OK)
+    return Response({"count": len(results), "framework": framework, "results": results},
+                    status=status.HTTP_200_OK)
 
 
 @api_view(["GET"])
@@ -449,21 +562,25 @@ def normalize_upload(request):
     results = []
     for i, file_obj in enumerate(files):
         vendor = vendors[i] if i < len(vendors) else "unknown"
-        config_text = file_obj.read().decode("utf-8", errors="ignore")
-        if len(config_text.strip()) < 10:
+        raw_text = file_obj.read().decode("utf-8", errors="ignore")
+        if len(raw_text.strip()) < 10:
             results.append({"vendor": vendor, "status": "failed", "error": "Config file empty or too short."})
             continue
-        results.append(_normalize_single_config(config_text, vendor, instructions, schema))
+        config_text, source_format = ingest(raw_text, vendor)
+        outcome = _normalize_single_config(config_text, vendor, instructions, schema)
+        outcome["source_format"] = source_format
+        results.append(outcome)
 
     return Response({"count": len(results), "results": results})
 
 # new api added
 @api_view(["POST"])
 def audit_upload(request, upload_id):
-    """POST /api/uploads/<id>/audit/  body: {"framework": "CIS" | "NIST"}"""
-    framework = (request.data.get("framework") or "").upper()
-    if framework not in ("CIS", "NIST"):
-        return Response({"error": "framework must be 'CIS' or 'NIST'."}, status=400)
+    """POST /api/uploads/<id>/audit/  body: {"framework": "CIS" | "NIST" | "STIG" | "ISO"}"""
+    requested = (request.data.get("framework") or "").upper().strip()
+    if requested and requested not in SUPPORTED_FRAMEWORKS:
+        return Response({"error": f"framework must be one of {', '.join(SUPPORTED_FRAMEWORKS)}."}, status=400)
+    framework = _resolve_framework(requested)
 
     try:
         upload = DeviceUpload.objects.get(id=upload_id)
@@ -480,12 +597,104 @@ def audit_upload(request, upload_id):
 
     report = compliance_engine(baseline, _load_rules(framework, upload.vendor))
     report["framework"] = framework
+    report["framework_label"] = FRAMEWORK_LABELS[framework]
 
     upload.baseline_json = baseline
     upload.compliance_report = report
     upload.status = "done"
     upload.save()
+    _take_snapshot(upload, baseline, report["summary"])
     return Response(DeviceUploadSerializer(upload).data)
+
+
+@api_view(["GET"])
+def list_frameworks(request):
+    """GET /api/frameworks/ - the benchmarks this deployment can score against."""
+    return Response([
+        {"id": key, "label": label,
+         "rules": len(_load_rules(key, "cisco"))}
+        for key, label in FRAMEWORK_LABELS.items()
+    ])
+
+
+@api_view(["GET"])
+def cache_report(request):
+    """GET /api/cache/stats/ - how often repeat uploads skip the LLM entirely."""
+    return Response(cache_stats())
+
+
+@api_view(["POST"])
+def cache_invalidate(request):
+    """POST /api/cache/clear/ - drop cached normalizations (optionally one vendor).
+
+    Rarely needed: the cache key includes the model, schema and prompt, so
+    editing any of them retires the affected entries automatically.
+    """
+    vendor = request.data.get("vendor") if request.data else None
+    return Response({"deleted": cache_clear(vendor)})
+
+
+@api_view(["GET"])
+def drift_for_upload(request, upload_id):
+    """GET /api/uploads/<id>/drift/?against=<upload_id>&framework=CIS
+
+    Compares this upload's baseline with another upload of the same device, or
+    with the most recent earlier baseline when `against` is omitted, and reports
+    which compliance verdicts the change moved.
+    """
+    try:
+        upload = DeviceUpload.objects.get(id=upload_id)
+    except DeviceUpload.DoesNotExist:
+        return Response({"error": "Not found."}, status=404)
+    if not upload.baseline_json:
+        return Response({"error": "Upload has no normalized baseline yet."}, status=400)
+
+    framework = _resolve_framework(request.query_params.get("framework"))
+    rules = _load_rules(framework, upload.vendor)
+
+    against_id = request.query_params.get("against")
+    if against_id:
+        try:
+            previous = DeviceUpload.objects.get(id=against_id)
+        except (DeviceUpload.DoesNotExist, ValueError, ValidationError):
+            return Response({"error": f"Upload '{against_id}' not found."}, status=404)
+        old_baseline = previous.baseline_json
+        old_meta = {"upload_id": str(previous.id), "created_at": previous.created_at,
+                    "vendor": previous.vendor}
+    else:
+        earlier = ComplianceSnapshot.objects.filter(
+            hostname=(upload.baseline_json or {}).get("hostname"),
+            vendor=upload.vendor,
+        ).exclude(upload=upload).first()
+        if earlier is None:
+            return Response({
+                "changed": False, "drift_count": 0, "changes": [],
+                "rules_impacted": [], "regressions": [],
+                "message": "No earlier baseline exists for this device yet.",
+            })
+        old_baseline = earlier.baseline_json
+        old_meta = {"upload_id": str(earlier.upload_id) if earlier.upload_id else None,
+                    "created_at": earlier.created_at, "vendor": earlier.vendor}
+
+    report = build_drift_report(
+        old_baseline, upload.baseline_json, rules,
+        old_meta, {"upload_id": str(upload.id), "created_at": upload.created_at,
+                   "vendor": upload.vendor},
+    )
+    report["framework"] = framework
+    return Response(report)
+
+
+@api_view(["GET"])
+def device_history(request, hostname):
+    """GET /api/devices/<hostname>/history/ - every baseline seen for a device."""
+    records = ComplianceSnapshot.objects.filter(hostname__iexact=hostname).select_related("upload")
+    return Response([{
+        "upload_id": str(r.upload_id) if r.upload_id else None,
+        "vendor": r.vendor,
+        "created_at": r.created_at,
+        "summary": r.summary,
+    } for r in records])
 
 
 @api_view(["GET"])

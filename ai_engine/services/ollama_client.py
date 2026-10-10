@@ -12,6 +12,8 @@ import os
 import requests
 from django.conf import settings
 
+from .fact_extractor import PLACEHOLDERS
+
 OLLAMA_URL = f"{settings.OLLAMA_BASE_URL}/api/generate"
 
 # Local CPU inference is slow: qwen2.5:3b produces roughly 8-10 tokens/second,
@@ -22,6 +24,12 @@ DEFAULT_TIMEOUT = int(os.environ.get("OLLAMA_TIMEOUT", "900"))
 # Enough for the normalized schema plus the audit block; stops runaway output.
 DEFAULT_NUM_PREDICT = int(os.environ.get("OLLAMA_NUM_PREDICT", "1400"))
 DEFAULT_NUM_CTX = int(os.environ.get("OLLAMA_NUM_CTX", "8192"))
+
+# Dual-call confidence check (slide 3/4). Small models cannot reliably self-rate
+# their own confidence, so normalization is sampled twice and only auto-accepted
+# when both calls agree on the security-relevant fields. This costs a second
+# inference on every cache miss, so it is switchable for live demos.
+DUAL_CHECK_ENABLED = os.environ.get("OLLAMA_DUAL_CHECK", "1").lower() not in ("0", "false", "no")
 
 
 class OllamaUnavailable(RuntimeError):
@@ -189,9 +197,9 @@ def _call_ollama_once(model: str, prompt: str, temperature: float):
     return data
 
 
-def normalize_config(config_text: str, instructions: dict, schema: dict, memory_context: str = "") -> dict:
-    """Sends raw config + schema to Ollama, returns normalized baseline JSON."""
-    prompt = (
+def _build_normalize_prompt(config_text: str, instructions: dict, schema: dict,
+                           memory_context: str) -> str:
+    return (
         f"{instructions['system_prompt']}\n\n"
         f"Output schema (must match exactly):\n{json.dumps(schema, indent=2)}\n\n"
         f"Previously reviewed command memory (use approved mappings when they match; "
@@ -206,7 +214,107 @@ def normalize_config(config_text: str, instructions: dict, schema: dict, memory_
         "values read from the configuration. Do NOT repeat the schema definition, do NOT "
         "output \"$schema\", \"type\", or \"properties\" keys, and do NOT add commentary."
     )
+
+
+def normalize_config(config_text: str, instructions: dict, schema: dict, memory_context: str = "") -> dict:
+    """Sends raw config + schema to Ollama, returns normalized baseline JSON."""
+    prompt = _build_normalize_prompt(config_text, instructions, schema, memory_context)
     return call_ollama(instructions["model"], prompt, instructions.get("temperature", 0))
+
+
+# ---- dual-call agreement -------------------------------------------------------
+
+# Only the security-relevant leaves are compared. Comparing audit metadata or
+# prose would report disagreement that changes nothing, and would push every
+# upload to human review for no benefit.
+_AGREEMENT_KEYS = (
+    "hostname", "os_version", "banners.motd", "banners.login",
+    "management.ssh_version", "management.telnet_enabled",
+    "management.http_enabled", "management.https_enabled",
+    "management.snmp.version", "management.snmp.community_strings",
+    "authentication.aaa_methods", "authentication.password_encryption",
+    "logging.remote_servers", "logging.local_buffered",
+    "ntp.servers", "ntp.authenticated",
+    "routing.protocols", "routing.authentication.ospf", "routing.authentication.bgp",
+)
+
+
+def _dig(data, dotted):
+    cur = data
+    for part in dotted.split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            return None
+        cur = cur[part]
+    if isinstance(cur, list):
+        # Server/interface lists are unordered facts. Comparing them by position
+        # would report a disagreement whenever the two calls happened to emit
+        # the same values in a different order, sending every such upload to
+        # human review for a non-issue.
+        return tuple(sorted(cur, key=lambda item: str(item)))
+    # Compare placeholder strings the way sanitize() will treat them downstream:
+    # 'Unknown', 'unknown' and null all become None, so they are not evidence
+    # of a disagreement and must not push an upload into human review.
+    if isinstance(cur, str) and cur.strip().lower() in PLACEHOLDERS:
+        return None
+    return cur
+
+
+def _normalize_call(prompt: str, instructions: dict) -> dict:
+    """A second sample of the SAME prompt at a non-zero temperature.
+
+    Reusing the identical prompt is deliberate. An earlier version used a
+    shortened second prompt, which made the two calls unequal in strength rather
+    than independent: the weakened call under-produced and returned None almost
+    everywhere, so the check disagreed on nearly every field and flagged every
+    upload for review. Sampling the same prompt twice measures real decoding
+    variance, which is the thing worth checking.
+    """
+    return call_ollama(instructions["model"], prompt, 0.2)
+
+
+def compare_agreements(first: dict, second: dict) -> list[dict]:
+    """Fields where the two calls disagree. An empty list means they agree."""
+    disagreements = []
+    for key in _AGREEMENT_KEYS:
+        a, b = _dig(first, key), _dig(second, key)
+        if a != b:
+            disagreements.append({"field": key, "call_a": a, "call_b": b})
+    return disagreements
+
+
+def normalize_config_checked(config_text: str, instructions: dict, schema: dict,
+                             memory_context: str = "") -> tuple[dict, str, list]:
+    """Normalize once, then confirm with a second independent call.
+
+    Returns (baseline, status, disagreements) where status is one of:
+      "agreed"  - both calls matched, auto-accepted
+      "diverged" - fields differed; call A is kept and the contested fields are
+                   recorded so the deterministic layer and human review can settle them
+      "single"  - dual check disabled or unavailable, single call accepted
+    """
+    first = normalize_config(config_text, instructions, schema, memory_context)
+    if not DUAL_CHECK_ENABLED:
+        return first, "single", []
+
+    try:
+        second = _normalize_call(
+            _build_normalize_prompt(config_text, instructions, schema, memory_context),
+            instructions)
+    except OllamaUnavailable:
+        return first, "single", []
+
+    if not isinstance(second, dict):
+        return first, "single", []
+
+    disagreements = compare_agreements(first, second)
+    if not disagreements:
+        return first, "agreed", []
+
+    # Call A is kept. The disagreements are returned rather than injected into
+    # the assessment here, because the caller knows which fields the
+    # deterministic layer and the mapping database will settle on their own -
+    # only the ones nothing else can resolve deserve a human.
+    return first, "diverged", disagreements
 
 def reinforcement_prompt(config_text: str, errors: list, instructions: dict, schema: dict) -> dict:
     """Stricter corrective retry when normalize_config() output fails validation."""
