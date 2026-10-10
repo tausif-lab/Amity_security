@@ -20,21 +20,29 @@
         </div>
 
         <div class="form-card" style="margin-top: 20px">
-          <h2>Translate Cisco to Juniper</h2>
+          <h2>Translate Configurations</h2>
           <form id="translateForm">
             <div class="form-group">
-              <label>Source Vendor</label>
+              <label for="sourceVendor">Source Vendor</label>
               <select id="sourceVendor" class="vendor-select" required>
-                <option value="cisco" selected>Cisco</option>
+                <option value="cisco" selected>Cisco IOS</option>
+                <option value="juniper">Juniper Junos</option>
               </select>
             </div>
 
             <div class="form-group">
-              <label>Target Vendor</label>
+              <label for="targetVendor">Target Vendor</label>
               <select id="targetVendor" class="vendor-select" required>
-                <option value="junos" selected>Junos / Juniper</option>
-                <option value="cisco">Cisco (Passthrough)</option>
+                <option value="junos" selected>Juniper Junos</option>
+                <option value="cisco">Cisco IOS</option>
               </select>
+              <small
+                id="translateHint"
+                class="translate-hint"
+                style="display: block; margin-top: 6px; color: var(--text-secondary)"
+              >
+                Cisco IOS &rarr; Juniper Junos
+              </small>
             </div>
 
             <div class="form-group">

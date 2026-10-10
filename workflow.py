@@ -22,8 +22,8 @@ import requests
 RAG_URL = "http://127.0.0.1:8001"
 DJANGO_URL = "http://127.0.0.1:8000"
 
-TARGETS = ["junos", "juniper", "cisco"]
-SOURCES = ["cisco", "ios"]
+TARGETS = ["junos", "juniper", "cisco", "ios"]
+SOURCES = ["cisco", "ios", "juniper", "junos"]
 
 
 def check() -> None:
@@ -107,6 +107,7 @@ def run(config_path: Path, source: str, target: str) -> int:
         print("Is the RAG API running?  ->  python rag/main.py  (port 8001)")
         return 1
 
+    target_label = "Junos set commands" if target in ("junos", "juniper") else "Cisco IOS config"
     print(f"\n=== TRANSLATION RESULT ===")
     print(f"  status            : {doc.get('status')}")
     print(f"  overall confidence: {doc.get('overall_confidence')}")
@@ -117,7 +118,7 @@ def run(config_path: Path, source: str, target: str) -> int:
     print(f"  unresolved        : {doc.get('unresolved')}")
     print(f"  txt_path          : {doc.get('txt_path')}")
 
-    print(f"\n  --- Juniper set commands ({len(doc.get('set_commands') or [])}) ---")
+    print(f"\n  --- {target_label} ({len(doc.get('set_commands') or [])}) ---")
     for c in doc.get("set_commands") or []:
         print(f"    {c}")
 
@@ -126,8 +127,11 @@ def run(config_path: Path, source: str, target: str) -> int:
     if handoff.get("success"):
         print(f"  upload_id : {handoff.get('upload_id')}")
         print(f"  status    : {handoff.get('status')}")
-        print("\n  Compliance summary:")
-        print_compliance(handoff.get("compliance_report") or {})
+        if handoff.get("compliance_report"):
+            print("\n  Compliance summary:")
+            print_compliance(handoff.get("compliance_report") or {})
+        else:
+            print("  (normalized; run the audit step for a compliance summary)")
     else:
         print(f"  NOT uploaded: {handoff.get('error')}")
         print("  Start Django with `python manage.py runserver` (port 8000) to enable auto-handoff.")

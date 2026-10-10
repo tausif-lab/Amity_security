@@ -21,12 +21,19 @@ approaches share one knowledge base and one vector store.
 from typing import Callable, Optional
 
 from .cisco_parser import parse as cisco_parse
-from .ir import normalize
+from .juniper_parser import parse as juniper_parse
+from .ir import normalize as normalize_cisco
+from .juniper_ir import normalize as normalize_juniper
 from .planner import build_plan, attach_evidence, consult_memory, llm_fallback
 from .generator import generate_set_commands, step_to_set_command
+from .cisco_generator import generate_cisco_config, step_to_cisco_line
 from .validation import validate_commands, validate_semantics, check_consistency
 from .verify import run_verification_loop
 from .confidence import construct_confidence, aggregate_confidence, category_of
+
+
+CISCO_ALIASES = {"cisco", "ios"}
+JUNIPER_ALIASES = {"juniper", "junos"}
 
 
 def translate_config(
@@ -35,24 +42,41 @@ def translate_config(
     with_rag: bool = True,
     persist: bool = True,
     search_fn: Optional[Callable] = None,
+    source_vendor: str = "cisco",
+    target_vendor: str = "junos",
 ) -> dict:
     """
-    Translate a Cisco config into validated Junos set commands.
-    search_fn defaults to core.store.search (chatbot's pgvector store).
-    Returns a structured result dict (see _default_search for fallback).
+    Translate a configuration between Cisco IOS and Juniper Junos.
+
+        Cisco config  -> parse -> IR -> plan -> validate -> Junos `set` commands
+        Junos config  -> parse -> IR -> plan -> validate -> Cisco IOS config
+
+    Both directions share one vendor-neutral IR, so only the parser, the mapping
+    catalog and the generator differ. search_fn defaults to core.store.search
+    (the chatbot's pgvector store) so the two approaches share one knowledge
+    base. Returns a structured result dict.
     """
     from . import memory as mem
+
+    source = (source_vendor or "cisco").strip().lower()
+    target = (target_vendor or "junos").strip().lower()
 
     if search_fn is None:
         from core.store import search as default_search
         search_fn = default_search
 
+    is_cisco_target = target in CISCO_ALIASES
+
     # ---- 1. deterministic parse -> IR --------------------------------------
-    ast = cisco_parse(config_text)
-    ir = normalize(ast)
+    if source in JUNIPER_ALIASES:
+        ast = juniper_parse(config_text)
+        ir = normalize_juniper(ast)
+    else:
+        ast = cisco_parse(config_text)
+        ir = normalize_cisco(ast)
 
     # ---- 2. plan: deterministic first, memory second ------------------------
-    plan = build_plan(ir)
+    plan = build_plan(ir, target_vendor=target)
     try:
         plan = consult_memory(plan)
     except Exception:
@@ -68,15 +92,21 @@ def translate_config(
     # ---- 4. LLM fallback for unmapped only ----------------------------------
     if use_llm:
         try:
-            plan = llm_fallback(plan, ir, search_fn=search_fn if with_rag else None)
+            plan = llm_fallback(plan, ir, search_fn=search_fn if with_rag else None,
+                                source_vendor=source, target_vendor=target)
         except Exception:
             pass
 
     # ---- 5. generate + validate + verify loop ---------------------------------
+    def render(plan_steps):
+        if is_cisco_target:
+            return generate_cisco_config(plan_steps)
+        return generate_set_commands(plan_steps)
+
     def steps_validate(plan_steps):
-        cmds = generate_set_commands(plan_steps)
-        results, issues = validate_commands(cmds)
-        sem = validate_semantics(ir, cmds)
+        cmds = render(plan_steps)
+        results, issues = validate_commands(cmds, vendor=target)
+        sem = validate_semantics(ir, cmds, vendor=target)
         for p in sem:
             issues.append({"command": p.get("command", ""), "level": p["level"],
                            "messages": p.get("messages", [])})
@@ -87,7 +117,7 @@ def translate_config(
     final_commands = verify["final_commands"]
     issues = verify["problems"]
 
-    consistency = check_consistency(ir, final_commands)
+    consistency = check_consistency(ir, final_commands, vendor=target)
 
     # ---- 6. confidence + explanations -----------------------------------------
     warnings = []
@@ -97,14 +127,15 @@ def translate_config(
 
     for step in final_plan:
         mapping = step.get("mapping", "")
-        source = step.get("source", "")
-        target = step_to_set_command(step) or (
-            f"# UNMAPPED: {source}" if step.get("kind") == "unmapped" else "")
+        source_line = step.get("source", "")
+        target_command = (step_to_cisco_line(step) if is_cisco_target
+                          else step_to_set_command(step)) or (
+            f"# UNMAPPED: {source_line}" if step.get("kind") == "unmapped" else "")
         cat = category_of(mapping)
 
-        issue_level = _issue_level(target, issues)
-        if issue_level == "warning" and target and not mapping.startswith("llm"):
-            warnings.append(f"{source or target}: {issue_level}")
+        issue_level = _issue_level(target_command, issues)
+        if issue_level == "warning" and target_command and not mapping.startswith("llm"):
+            warnings.append(f"{source_line or target_command}: {issue_level}")
 
         evidence = step.get("evidence", [])
         conf = construct_confidence(
@@ -118,8 +149,8 @@ def translate_config(
         reasons = _reasons(step, mapping)
 
         explanations.append({
-            "source_line": source,
-            "target_command": target,
+            "source_line": source_line,
+            "target_command": target_command,
             "mapping": mapping,
             "category": cat,
             "confidence": round(conf, 3),
@@ -132,9 +163,9 @@ def translate_config(
         scores.append({"category": cat, "confidence": conf, "validated": validated})
 
         if step.get("kind") == "unmapped":
-            warnings.append(f"{source}: {step.get('reason', 'unmapped')}")
-            if source not in unresolved:
-                unresolved.append(source)
+            warnings.append(f"{source_line}: {step.get('reason', 'unmapped')}")
+            if source_line not in unresolved:
+                unresolved.append(source_line)
 
     for p in consistency:
         msg = p.get("messages", [""])[0]
@@ -152,6 +183,8 @@ def translate_config(
 
     return {
         "run_id": run_id,
+        "source_vendor": source,
+        "target_vendor": target,
         "source_config": config_text,
         "ir": ir.model_dump_safe(),
         "set_commands": final_commands,
@@ -174,19 +207,31 @@ def _issue_level(target: str, issues: list) -> str:
 
 
 def _reasons(step: dict, mapping: str) -> list:
-    from .mappings import MAPPING_META
+    from . import mappings as junos_meta
     reasons = []
-    meta = MAPPING_META.get(mapping)
+    # The explanation catalog differs per direction: cisco_mappings documents
+    # Junos -> IOS, mappings documents IOS -> Junos.
+    try:
+        from .cisco_mappings import CISCO_MAPPING_META
+        meta = CISCO_MAPPING_META.get(mapping)
+    except Exception:
+        meta = None
+    if meta is None:
+        meta = junos_meta.MAPPING_META.get(mapping)
     if meta:
         reasons.append(meta.get("label", mapping))
-        reasons.append(f"Cisco: {meta.get('cisco', '')}")
-        reasons.append(f"Junos: {meta.get('junos', '')}")
+        if "cisco" in meta:
+            reasons.append(f"Source: {meta.get('junos', '')}")
+            reasons.append(f"Target: {meta.get('cisco', '')}")
+        else:
+            reasons.append(f"Cisco: {meta.get('cisco', '')}")
+            reasons.append(f"Junos: {meta.get('junos', '')}")
     if step.get("memorized"):
         reasons.append("Matched verified translation memory.")
     if step.get("llm_assisted"):
         reasons.append("LLM-assisted translation (lower confidence).")
     if step.get("kind") == "unmapped":
-        reasons.append(step.get("reason", "No verified Junos equivalent found."))
+        reasons.append(step.get("reason", "No verified target equivalent found."))
     return reasons
 
 

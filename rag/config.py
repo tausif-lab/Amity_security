@@ -4,11 +4,8 @@ import os
 from pathlib import Path
 
 RAG_DIR = Path(__file__).resolve().parent
-print(RAG_DIR)
 KNOWLEDGE_BASE = RAG_DIR / "knowledge_base"
-print(KNOWLEDGE_BASE)
 LINKS_FILE = KNOWLEDGE_BASE / "links.txt"
-print(LINKS_FILE)
 
 # Database (PostgreSQL 18 + pgvector, local)
 DB_HOST = os.environ.get("RAG_DB_HOST", "localhost")
@@ -28,7 +25,10 @@ EMBEDDING_MODEL = os.environ.get("RAG_EMBEDDING_MODEL", "all-MiniLM-L6-v2")
 EMBEDDING_LENGTH = 384
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "hf.co/empero-ai/Qwen3.8-4B-Distill-GGUF:Q4_K_M")
+# Default to the model that is actually pulled locally (see README step 5).
+# A model name that is not installed makes Ollama answer 404, which previously
+# broke the RAG chatbot and the translator's LLM fallback with no clear error.
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:3b")
 OLLAMA_TEMPERATURE = 0.1
 
 # Retrieval / chunking

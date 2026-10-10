@@ -1,0 +1,54 @@
+# UNMAPPED: set system host-name SRX-01
+#   reason: No verified Junos equivalent for 'set system host-name SRX-01'. Manual review required.
+# UNMAPPED: set system domain-name college.local
+#   reason: No verified Junos equivalent for 'set system domain-name college.local'. Manual review required.
+# UNMAPPED: set system time-zone Asia/Kolkata
+#   reason: No verified Junos equivalent for 'set system time-zone Asia/Kolkata'. Manual review required.
+# UNMAPPED: # Management SSH (good - but syntax is Juniper-specific)
+#   reason: No verified Junos equivalent for '# Management SSH (good - but syntax is Juniper-specific)'. Manual review required.
+# UNMAPPED: set system services ssh protocol-version v2
+#   reason: No verified Junos equivalent for 'set system services ssh protocol-version v2'. Manual review required.
+# UNMAPPED: # Telnet (bad - should be disabled)
+#   reason: No verified Junos equivalent for '# Telnet (bad - should be disabled)'. Manual review required.
+# UNMAPPED: set system services telnet
+#   reason: No verified Junos equivalent for 'set system services telnet'. Manual review required.
+# UNMAPPED: # User accounts (password type 9 for SHA256)
+#   reason: No verified Junos equivalent for '# User accounts (password type 9 for SHA256)'. Manual review required.
+# UNMAPPED: set system login user admin class super-user
+#   reason: No verified Junos equivalent for 'set system login user admin class super-user'. Manual review required.
+# UNMAPPED: set system login user admin authentication encrypted-password "$6$abc123$..."
+#   reason: No verified Junos equivalent for 'set system login user admin authentication encrypted-password "$6$abc123$..."'. Manual review required.
+# UNMAPPED: # Banner (good)
+#   reason: No verified Junos equivalent for '# Banner (good)'. Manual review required.
+# UNMAPPED: set system login message "Unauthorized access prohibited"
+#   reason: No verified Junos equivalent for 'set system login message "Unauthorized access prohibited"'. Manual review required.
+# UNMAPPED: # SNMP (bad - default community)
+#   reason: No verified Junos equivalent for '# SNMP (bad - default community)'. Manual review required.
+# UNMAPPED: set snmp community public authorization read-only
+#   reason: No verified Junos equivalent for 'set snmp community public authorization read-only'. Manual review required.
+# UNMAPPED: # Logging (good)
+#   reason: No verified Junos equivalent for '# Logging (good)'. Manual review required.
+# UNMAPPED: set system syslog host 10.0.0.5 any any
+#   reason: No verified Junos equivalent for 'set system syslog host 10.0.0.5 any any'. Manual review required.
+# UNMAPPED: set system syslog file messages any any
+#   reason: No verified Junos equivalent for 'set system syslog file messages any any'. Manual review required.
+# UNMAPPED: # NTP (good)
+#   reason: No verified Junos equivalent for '# NTP (good)'. Manual review required.
+# UNMAPPED: set system ntp server 10.0.0.1
+#   reason: No verified Junos equivalent for 'set system ntp server 10.0.0.1'. Manual review required.
+# UNMAPPED: # Interfaces (hardening)
+#   reason: No verified Junos equivalent for '# Interfaces (hardening)'. Manual review required.
+# UNMAPPED: set interfaces ge-0/0/0 unit 0 family inet address 192.168.1.1/24
+#   reason: No verified Junos equivalent for 'set interfaces ge-0/0/0 unit 0 family inet address 192.168.1.1/24'. Manual review required.
+# UNMAPPED: set interfaces ge-0/0/1 disable
+#   reason: No verified Junos equivalent for 'set interfaces ge-0/0/1 disable'. Manual review required.
+# UNMAPPED: # Routing (OSPF with authentication)
+#   reason: No verified Junos equivalent for '# Routing (OSPF with authentication)'. Manual review required.
+# UNMAPPED: set protocols ospf area 0 interface ge-0/0/0 authentication md5 10 key SecureOSPF
+#   reason: No verified Junos equivalent for 'set protocols ospf area 0 interface ge-0/0/0 authentication md5 10 key SecureOSPF'. Manual review required.
+# UNMAPPED: # Unknown / advanced command (testing training loop)
+#   reason: No verified Junos equivalent for '# Unknown / advanced command (testing training loop)'. Manual review required.
+# UNMAPPED: set security policies from-zone trust to-zone untrust policy allow-ssh match source-address any
+#   reason: No verified Junos equivalent for 'set security policies from-zone trust to-zone untrust policy allow-ssh match source-address any'. Manual review required.
+# UNMAPPED: set security policies from-zone trust to-zone untrust policy allow-ssh then permit
+#   reason: No verified Junos equivalent for 'set security policies from-zone trust to-zone untrust policy allow-ssh then permit'. Manual review required.

@@ -2,10 +2,11 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+    path("health/", views.health, name="health"),
     path("me/", views.me, name="me"),
     path("normalization-reviews/", views.normalization_reviews, name="normalization_reviews"),
     path("normalization-reviews/<int:memory_id>/", views.resolve_normalization_review, name="resolve_normalization_review"),
-    # path("uploads/", views.upload_config, name="upload_config"),
+    path("uploads/", views.upload_config, name="upload_config"),
     path("normalize/", views.normalize_upload, name="normalize_upload"),
     path("uploads/<uuid:upload_id>/audit/", views.audit_upload, name="audit_upload"),
     path("uploads/<uuid:upload_id>/", views.get_upload, name="get_upload"),

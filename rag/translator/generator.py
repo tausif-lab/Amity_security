@@ -57,19 +57,78 @@ def sort_steps(plan: List[dict]) -> List[dict]:
 
 def generate_set_commands(plan: List[dict]) -> List[str]:
     """Render an entire plan to a stable, ordered list of set commands.
-    Unmapped steps become `# UNMAPPED: <source>  (reason)` comment lines."""
+
+    Unmapped steps become `# UNMAPPED: <source>  (reason)` comment lines.
+    Identical commands are emitted once: several source lines (for example
+    `ip ssh version 2` and `transport input ssh`) can legitimately map to the
+    same Junos statement, and repeating it would be rejected by the device.
+    """
     out = []
+    seen = set()
+    rendered = []
     for step in sort_steps(plan):
         if step.get("kind") == "unmapped":
             src = step.get("source", "")
             reason = step.get("reason", "No verified Junos equivalent found.")
-            out.append(f"# UNMAPPED: {src}")
+            # Never echo a secret back out, not even inside a comment: the
+            # generated file is downloaded and shared between reviewers.
+            marker = f"# UNMAPPED: {redact_secret(src)}"
+            if marker in seen:
+                continue
+            seen.add(marker)
+            out.append(marker)
             out.append(f"#   reason: {reason}")
             continue
         cmd = step_to_set_command(step)
-        if cmd:
+        if cmd and cmd not in seen:
+            seen.add(cmd)
+            rendered.append(cmd)
             out.append(cmd)
-    return out
+    return _drop_redundant_parents(out, rendered)
+
+
+def _drop_redundant_parents(out: List[str], rendered: List[str]) -> List[str]:
+    """Remove `set a b` when `set a b c` already configures the same branch.
+
+    In Junos, configuring a leaf implicitly enables its parents, so emitting
+    both `set system services ssh` and
+    `set system services ssh protocol-version v2` is redundant noise.
+    """
+    redundant = set()
+    for command in rendered:
+        if not command.startswith("set "):
+            continue
+        # only a multi-level parent can be implied by a longer command
+        while " " in command[4:]:
+            command = command.rsplit(" ", 1)[0]
+            if len(command.split(" ")) < 3:
+                break
+            if command in rendered and command not in redundant:
+                redundant.add(command)
+    if not redundant:
+        return out
+    return [line for line in out if line not in redundant]
+
+
+# Token names after which the remainder of a command is treated as a secret.
+_SECRET_TOKENS = ("secret", "password", "key-string",
+                  "encrypted-password", "community", "pre-shared-key")
+
+
+def redact_secret(text: str) -> str:
+    """Replace a trailing credential value with `<redacted>`."""
+    low = text.lower()
+    for token in _SECRET_TOKENS:
+        index = low.rfind(token)
+        if index == -1:
+            continue
+        tail = text[index + len(token):]
+        # only redact when the secret value is the last thing on the line
+        value = tail.strip().lstrip("=").strip()
+        if not value or value.startswith("#"):
+            continue
+        return text[:index + len(token)] + " <redacted>"
+    return text
 
 
 def generate_config_text(plan: List[dict]) -> str:

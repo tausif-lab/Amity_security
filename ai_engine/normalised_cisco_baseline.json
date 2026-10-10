@@ -1,0 +1,61 @@
+{
+  "vendor": "cisco",
+  "hostname": "SRX-01",
+  "os_version": null,
+  "management": {
+    "ssh_version": 2,
+    "telnet_enabled": true,
+    "http_enabled": false,
+    "https_enabled": null,
+    "snmp": {
+      "version": null,
+      "community_strings": [
+        "public"
+      ]
+    }
+  },
+  "authentication": {
+    "aaa_methods": [],
+    "password_encryption": "sha512"
+  },
+  "logging": {
+    "remote_servers": [
+      "10.0.0.5"
+    ],
+    "local_buffered": true
+  },
+  "ntp": {
+    "servers": [
+      "10.0.0.1"
+    ],
+    "authenticated": null
+  },
+  "routing": {
+    "protocols": [
+      "ospf"
+    ],
+    "authentication": {
+      "ospf": false,
+      "bgp": false
+    }
+  },
+  "interfaces": [
+    {
+      "name": "GigabitEthernet0/0/0",
+      "admin_down": false,
+      "cdp_enabled": true,
+      "lldp_enabled": null
+    },
+    {
+      "name": "GigabitEthernet0/0/1",
+      "admin_down": true,
+      "cdp_enabled": true,
+      "lldp_enabled": null
+    }
+  ],
+  "banners": {
+    "motd": "Unauthorized access prohibited",
+    "login": null
+  },
+  "raw_commands": []
+}

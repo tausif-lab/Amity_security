@@ -21,12 +21,15 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-^xo!5s%_^#pb=ddhpne@u!@6hpvxw-z_vf!fwb1e1f-j2a*=v*'
+SECRET_KEY = config(
+    "DJANGO_SECRET_KEY",
+    default='django-insecure-^xo!5s%_^#pb=ddhpne@u!@6hpvxw-z_vf!fwb1e1f-j2a*=v*',
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = config("DJANGO_DEBUG", default=True, cast=bool)
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [h for h in config("DJANGO_ALLOWED_HOSTS", default="*").split(",") if h]
 
 
 # Application definition
@@ -80,27 +83,22 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-# DATABASES = {
-#     "default": {
-#         "ENGINE": "django.db.backends.postgresql",
-#         "NAME": "Security_Compliance",
-#         "USER": "tausifkhan",
-#         "PASSWORD": "",
-#         "HOST": "localhost",
-#         "PORT": "5432",
-#     }
-# }
 OLLAMA_BASE_URL = config('OLLAMA_BASE_URL', default='http://localhost:11434')
-SUPABASE_URL = config("SUPABASE_URL")
-SUPABASE_ANON_KEY = config("SUPABASE_ANON_KEY")
+
+# Supabase is optional for local development. The auth-gated /api/me/ endpoint
+# needs these; every other endpoint works without them, so they must never
+# raise at import time (that previously made `manage.py` unusable at all).
+SUPABASE_URL = config("SUPABASE_URL", default="")
+SUPABASE_ANON_KEY = config("SUPABASE_ANON_KEY", default="")
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": "Security_Compliance",
-        "USER": "postgres",
-        "PASSWORD": "Prinshu@135",
-        "HOST": "localhost",
-        "PORT": "5432",
+        "NAME": config("POSTGRES_DB", default="Security_Compliance"),
+        "USER": config("POSTGRES_USER", default="postgres"),
+        "PASSWORD": config("POSTGRES_PASSWORD", default="Prinshu@135"),
+        "HOST": config("POSTGRES_HOST", default="localhost"),
+        "PORT": config("POSTGRES_PORT", default="5432"),
     }
 }
 REST_FRAMEWORK = {

@@ -10,9 +10,10 @@ import re
 from pathlib import Path
 from io import BytesIO
 
-from django.db.migrations import state
+import requests
+from django.conf import settings
 from django.http import HttpResponse
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.response import Response
 from rest_framework import status
 
@@ -31,9 +32,6 @@ from .services.normalization_memory import (
     prompt_context, store_pending,
 )
 from compliance.services.rule_engine import compliance_engine
-from compliance.services.remediation import generate_remediation_commands, execute_remediation
-from rest_framework.decorators import api_view, authentication_classes, permission_classes
-from rest_framework.response import Response
 from .supabase_auth import SupabaseAuthentication, role_required
 from ai_engine.services.fact_extractor import apply_overrides, sanitize, drop_unsupported_interfaces
 
@@ -71,6 +69,12 @@ def _normalize_single_config(config_text, vendor, instructions, schema):
         upload.status = "failed"
         upload.save()
         return {"id": str(upload.id), "vendor": vendor, "status": "failed", "error": str(e)}
+
+    if not isinstance(normalized_data, dict):
+        upload.status = "failed"
+        upload.save()
+        return {"id": str(upload.id), "vendor": vendor, "status": "failed",
+                "error": f"Normalizer returned {type(normalized_data).__name__}, expected a JSON object."}
 
     assessments = normalized_data.pop("_normalization_assessment", [])
     is_single_review_demo = "HITL_SINGLE_REVIEW_DEMO" in config_text
@@ -126,50 +130,38 @@ def _normalize_single_config(config_text, vendor, instructions, schema):
     retry_count = 0
     while not is_valid and retry_count < 2:
         try:
-            normalized_data = reinforcement_prompt(config_text, errors, instructions, schema)
+            candidate = reinforcement_prompt(config_text, errors, instructions, schema)
         except Exception:
             break
-        is_valid, errors = validate_normalized_json(normalized_data, schema)
+        # A corrective retry can come back worse than the first answer (small
+        # models sometimes echo the schema back verbatim). Keep whichever
+        # candidate actually satisfies the schema, and never let a failed
+        # retry overwrite a valid normalization.
+        if not isinstance(candidate, dict):
+            break
+        candidate_valid, candidate_errors = validate_normalized_json(candidate, schema)
+        if candidate_valid:
+            normalized_data = candidate
+            is_valid, errors = True, []
+            break
+        if not is_valid and len(candidate_errors) < len(errors):
+            normalized_data, errors = candidate, candidate_errors
         retry_count += 1
 
     # A corrective retry may also return audit metadata; it must never leak into
     # the normalized baseline consumed by the deterministic compliance engine.
     normalized_data.pop("_normalization_assessment", None)
-    # normalized_data = apply_overrides(normalized_data, config_text, vendor)
     normalized_data = sanitize(normalized_data, schema, config_text)
     normalized_data = drop_unsupported_interfaces(normalized_data, config_text)
+    # `vendor` is known from the upload form, never from the model, so apply it
+    # before the final validation pass: without it every upload would be sent
+    # to review purely because the model omitted a field we already know.
     normalized_data = apply_overrides(normalized_data, config_text, vendor)
 
-    # if not is_valid:
-    #     upload.status = "review"
-    #     upload.baseline_json = normalized_data
-    #     upload.save()
-    #     return {"id": str(upload.id), "vendor": vendor, "status": "review", "errors": errors,
-    #             "partial_baseline": normalized_data, "normalization_review": review_items}
+    # Validate the fully processed baseline, not the raw model output: the
+    # deterministic overrides above legitimately add the required `vendor`.
+    is_valid, errors = validate_normalized_json(normalized_data, schema)
 
-    # report = compliance_engine(normalized_data, rules)
-    # upload.baseline_json = normalized_data
-    # upload.compliance_report = report
-    # upload.status = "done"
-    # upload.save()
-    # result = DeviceUploadSerializer(upload).data
-    # result["normalization_review"] = review_items
-    # result["memory_matches"] = [{"command": item["input_command"], "memory_id": item["id"],
-    #                               "similarity": item["similarity"], "status": item["status"]}
-    #                              for item in memories]
-    # return result
-    # state = "review" if review_items else "normalized"
-    # upload.baseline_json = normalized_data
-    # upload.status = state
-    # upload.save()
-    # return {
-    #     "id": str(upload.id), "vendor": vendor, "status": state,
-    #     "baseline_json": normalized_data,
-    #     "normalization_review": review_items,
-    #     "memory_matches": [{"command": m["input_command"], "memory_id": m["id"],
-    #                         "similarity": m["similarity"], "status": m["status"]}
-    #                        for m in memories],
-    # }
     if not is_valid:
         upload.status = "review"
         upload.baseline_json = normalized_data
@@ -191,12 +183,121 @@ def _normalize_single_config(config_text, vendor, instructions, schema):
     }
 
 
+def _process_single_config(config_text, vendor, instructions, schema, rules):
+    """Normalize one config, then run the deterministic compliance engine.
+
+    A pending human review does NOT suppress the report: the upload is still
+    scored so the reviewer can see what the unresolved command affects. Only a
+    schema-validation failure blocks compliance, because the baseline cannot be
+    trusted as input to the rule engine.
+    """
+    result = _normalize_single_config(config_text, vendor, instructions, schema)
+    if result.get("status") == "failed" or "errors" in result:
+        # Baseline failed schema validation: no report is built on untrusted data.
+        return result
+
+    upload = DeviceUpload.objects.get(id=result["id"])
+    baseline = upload.baseline_json or {}
+
+    # A human may have approved mappings after this baseline was first written,
+    # so re-apply them before scoring to reflect the approved truth.
+    memories = lookup_config_memories(config_text, vendor)
+    baseline = apply_approved_mappings(baseline, memories)
+
+    report = compliance_engine(baseline, rules)
+    upload.baseline_json = baseline
+    upload.compliance_report = report
+    # "review" means a human decision is still outstanding; "done" means the
+    # analysis is complete and nothing is waiting on a person.
+    upload.status = "review" if result.get("normalization_review") else "done"
+    upload.save()
+
+    result["status"] = upload.status
+    result["baseline_json"] = baseline
+    result["compliance_report"] = report
+    result["summary"] = report["summary"]
+    return result
+
+
+@api_view(["GET"])
+def health(request):
+    """Liveness probe used by workflow.py --check and the frontend diagnostics."""
+    from django.conf import settings
+    from django.db import connection
+
+    database_ok = True
+    database_error = ""
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+    except Exception as exc:
+        database_ok = False
+        database_error = str(exc)
+
+    ollama_ok = False
+    ollama_error = None
+    try:
+        resp = requests.get(f"{settings.OLLAMA_BASE_URL}/api/tags", timeout=5)
+        ollama_ok = resp.ok
+        if not ollama_ok:
+            ollama_error = f"HTTP {resp.status_code}"
+    except Exception as exc:
+        ollama_error = str(exc)
+
+    return Response({
+        "status": "ok" if (database_ok and ollama_ok) else "degraded",
+        "database": {"connected": database_ok,
+                     **({} if database_ok else {"error": database_error})},
+        "ollama": {"connected": ollama_ok, "base_url": settings.OLLAMA_BASE_URL,
+                   **({"error": ollama_error} if ollama_error else {})},
+    }, status=200)
+
+
+@api_view(["POST"])
+def upload_config(request):
+    """
+    POST /api/uploads/
+    Accepts ONE OR MORE config files (same field name "config", with "vendor"
+    repeated once per file in the same order). Each file is processed
+    independently and every result carries its own compliance report.
+    """
+    files = request.FILES.getlist("config")
+    vendors = request.data.getlist("vendor")
+
+    if not files:
+        return Response({"error": "No config file(s) provided."}, status=status.HTTP_400_BAD_REQUEST)
+
+    instructions = _load_json(INSTRUCTIONS_PATH)
+    schema = _load_json(SCHEMA_PATH)
+
+    results = []
+    for i, file_obj in enumerate(files):
+        vendor = vendors[i] if i < len(vendors) else "unknown"
+        config_text = file_obj.read().decode("utf-8", errors="ignore")
+
+        if len(config_text.strip()) < 10:
+            results.append({"vendor": vendor, "status": "failed",
+                            "error": "Config file empty or too short."})
+            continue
+
+        rules = _load_rules("CIS", vendor)
+        try:
+            results.append(
+                _process_single_config(config_text, vendor, instructions, schema, rules))
+        except Exception as exc:
+            results.append({"vendor": vendor, "status": "failed", "error": str(exc)})
+
+    return Response({"count": len(results), "results": results}, status=status.HTTP_200_OK)
+
+
 @api_view(["GET"])
 def normalization_reviews(request):
     """List unresolved LLM doubts for a reviewer UI or workflow."""
     from .models import NormalizationMemory
     records = NormalizationMemory.objects.filter(status="pending").order_by("-created_at")
     return Response([{"id": row.id, "vendor": row.vendor, "command": row.command,
+                      "status": row.status,
                       "proposed_meaning": row.description, "confidence": row.llm_confidence,
                       "created_at": row.created_at} for row in records])
 
@@ -333,37 +434,6 @@ def generate_compliance_pdf(uploads):
     buffer.seek(0)
     return buffer
 
-
-# @api_view(["POST"])
-# def upload_config(request):
-#     """
-#     POST /api/uploads/
-#     Accepts ONE OR MORE config files (same field name "config", or
-#     "vendor" repeated per file). Each file is processed independently.
-#     """
-#     files = request.FILES.getlist("config")
-#     vendors = request.data.getlist("vendor")  # one vendor string per file, same order
-
-#     if not files:
-#         return Response({"error": "No config file(s) provided."}, status=status.HTTP_400_BAD_REQUEST)
-
-#     instructions = _load_json(INSTRUCTIONS_PATH)
-#     schema = _load_json(SCHEMA_PATH)
-#     rules = _load_json(RULES_PATH)
-
-#     results = []
-#     for i, file_obj in enumerate(files):
-#         vendor = vendors[i] if i < len(vendors) else "unknown"
-#         config_text = file_obj.read().decode("utf-8", errors="ignore")
-
-#         if len(config_text.strip()) < 10:
-#             results.append({"vendor": vendor, "status": "failed", "error": "Config file empty or too short."})
-#             continue
-
-#         result = _process_single_config(config_text, vendor, instructions, schema, rules)
-#         results.append(result)
-
-#     return Response({"count": len(results), "results": results}, status=status.HTTP_200_OK)
 
 @api_view(["POST"])
 def normalize_upload(request):
@@ -535,10 +605,11 @@ def download_corrected_config(request, upload_id):
 
     instructions = _load_json(INSTRUCTIONS_PATH)
 
-    # We don't store the original raw config text (per your earlier decision
-    # to keep JSON-only persistence) - so reconstruct from raw_commands +
-    # baseline_json as the closest available representation.
-    original_text = "\n".join(upload.baseline_json.get("raw_commands", []))
+    # Use the config exactly as the user uploaded it when available; the
+    # baseline's raw_commands is only a lossy fallback for older uploads.
+    original_text = upload.original_config_text or "\n".join(
+        upload.baseline_json.get("raw_commands", [])
+    )
 
     corrected_text = build_corrected_config(
         original_text, upload.baseline_json, upload.compliance_report["results"], instructions

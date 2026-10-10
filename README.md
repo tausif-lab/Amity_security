@@ -1,7 +1,20 @@
 
 # Network Security Compliance Automation
 
-Analyze Cisco IOS and Juniper Junos network-device configurations against CIS and NIST-oriented rules. The application uses Ollama to normalize configurations, evaluates them with deterministic rules, produces JSON/PDF reports, and includes a RAG-assisted Cisco-to-Junos translation service.
+Analyze Cisco IOS and Juniper Junos network-device configurations against CIS and NIST-oriented rules. The application uses Ollama to normalize configurations, evaluates them with deterministic rules, produces JSON/PDF reports, and includes a RAG-assisted **bidirectional** Cisco ↔ Juniper translation service with a human-in-the-loop learning cycle.
+
+## Translation directions
+
+| Source | Target | Output |
+|---|---|---|
+| Cisco IOS | Juniper Junos | Junos `set` commands |
+| Juniper Junos | Cisco IOS | Cisco IOS block configuration |
+
+Select the direction in the frontend, or call the API:
+
+```powershell
+curl.exe -X POST "http://127.0.0.1:8001/api/translate/upload?source_vendor=juniper&target_vendor=cisco" -F "file=@sample_config_juniper.txt"
+```
 
 ## Components
 
@@ -208,9 +221,20 @@ Included test inputs:
 
 The first analysis can take longer while Ollama loads the model.
 
-### Translate Cisco IOS to Junos
+### Translate between Cisco and Juniper
 
-Start both Django and the RAG service, then use the translation section of the frontend. The current translator supports Cisco/IOS as the source vendor and Junos, Juniper, or Cisco as the target vendor. Translation runs through deterministic mappings, stored mappings, RAG evidence, and an LLM fallback. Review generated commands before applying them to any device.
+Start both Django and the RAG service, then use the translation section of the
+frontend. Pick a **Source Vendor** and a **Target Vendor**:
+
+- **Cisco IOS → Junos** produces Junos `set` commands.
+- **Junos → Cisco IOS** produces a Cisco IOS block configuration
+  (`interface ...` / indented commands, dotted subnet masks).
+
+Translation runs through deterministic mappings, stored mappings, RAG evidence,
+and an LLM fallback for lines with no verified equivalent. Lines that cannot be
+translated safely (notably credentials) are emitted as `# UNMAPPED:` markers
+rather than guessed, so review the generated commands before applying them to
+any device.
 
 ### Use the RAG chatbot from the terminal
 
@@ -266,14 +290,24 @@ With PostgreSQL and Ollama available, run the Django tests from the project root
 python manage.py test
 ```
 
+Or run every suite in the repository (Django + bidirectional translator):
+
+```powershell
+python run_tests.py
+```
+
 ## Troubleshooting
 
 | Problem | Check or fix |
 |---|---|
 | `ModuleNotFoundError` | Activate `.venv`, then rerun `python -m pip install -r requirements.txt`. |
+| `UndefinedValueError` on `manage.py` | Supabase settings are optional locally; `config/settings.py` supplies defaults. If you set them, add `SUPABASE_URL` / `SUPABASE_ANON_KEY` to a `.env` file. |
 | Database connection failed | Confirm PostgreSQL is running, credentials match the two config files, and `Security_Compliance` exists. |
 | `extension "vector" is not available` | Install pgvector for your PostgreSQL version, then rerun `CREATE EXTENSION vector;`. |
+| `type "vector" does not exist` when testing | The `core.0001a_enable_pgvector` migration creates the extension. Run `python manage.py migrate`. |
 | Ollama connection failed | Run `ollama serve`, confirm `ollama list` shows `qwen2.5:3b`, and verify port 11434 is free. |
+| `Ollama has no model named ...` | The configured model is not pulled. Either `ollama pull <model>` or set `OLLAMA_MODEL` to an installed model. |
+| Upload is slow on first run | Local CPU inference generates ~900 tokens; expect 30-90s. `OLLAMA_TIMEOUT` (default 900s) and `OLLAMA_NUM_PREDICT` tune this. |
 | RAG indexer cannot create a database | Create `rag_chatbot` manually with a PostgreSQL superuser or grant `CREATEDB` to the RAG database role. |
 | Translation does not work in the frontend | Ensure Django is on port 8000 and `python main.py` is running from the `rag` directory on port 8001. |
 | Browser blocks a local file request | Serve `frontend` through a local web server or open the supplied `frontend/index.html`; Django and FastAPI are configured for development CORS access. |
@@ -286,8 +320,27 @@ compliance/      CIS/NIST rule data and remediation logic
 config/          Django configuration
 core/            Django models and API endpoints
 frontend/        HTML, CSS, and JavaScript interface
-rag/             RAG indexing, chat, and Cisco-to-Junos translation
+rag/             RAG indexing, chat, and bidirectional Cisco <-> Juniper translation
 requirements.txt Python dependencies
+run_tests.py     Runs the Django and translator test suites together
+```
+
+### Translator package layout
+
+```text
+rag/translator/
+  cisco_parser.py    Cisco IOS text -> Cisco AST
+  juniper_parser.py   Junos `set`/`delete` text -> Junos AST
+  ir.py               Cisco AST  -> DeviceIR (shared IR model)
+  juniper_ir.py       Junos AST  -> DeviceIR   (same IR)
+  mappings.py         DeviceIR -> Junos plan steps
+  cisco_mappings.py   DeviceIR -> Cisco IOS plan steps
+  generator.py        plan steps -> Junos `set` commands
+  cisco_generator.py  plan steps -> Cisco IOS config
+  planner.py          orchestration, memory, RAG evidence, LLM fallback
+  validation.py       syntax + semantic + consistency checks
+  confidence.py       per-construct and aggregate scoring
+  verify.py           generate -> validate -> critique loop
 ```
 
 ## Security Note
@@ -322,19 +375,47 @@ and you will get the response
 
 ---
 
-# RAG (Cisco -> Juniper translation) with normalized output
+# RAG (bidirectional vendor translation) with normalized output
 
 The `rag/` folder is a standalone FastAPI service (port 8001) that:
 
 - asks for the source vendor and target vendor first (`GET /api/vendors`)
-- translates Cisco config into Junos `set` commands (deterministic pipeline +
-  RAG evidence + Ollama fallback)
+- translates **Cisco IOS -> Junos** *and* **Junos -> Cisco IOS** into the
+  target platform's native syntax (deterministic pipeline + RAG evidence +
+  Ollama fallback)
 - writes the full RAG response to `rag\normalised_{target}.json`
 - writes a copy to `ai_engine\normalised_{target}.json`
 - writes the schema baseline (ai_engine format) to
   `ai_engine\normalised_{target}_baseline.json`
+- writes the translated configuration to
+  `ai_engine\{source}_to_{target}.txt`
 - hands the translated config to Django's upload pipeline, so ai_engine LLM
   normalizes it, validates it, and runs the compliance engine
+
+Both directions share one vendor-neutral IR, so only the parser, the mapping
+catalog and the generator differ:
+
+```text
+Cisco IOS text -> cisco_parser    \
+                                  ->  DeviceIR  ->  build_plan(target)  ->  generator
+Junos text     -> juniper_parser  /                                  \
+                                                                        v
+                                                          Junos `set` commands
+                                                            or Cisco IOS blocks
+```
+
+### Vendor support
+
+| Source | Target | Output |
+|---|---|---|
+| `cisco` / `ios` | `junos` / `juniper` | Junos `set` commands |
+| `juniper` / `junos` | `cisco` / `ios` | Cisco IOS block config |
+| same vendor | same vendor | passthrough (no conversion) |
+
+Credentials (`secret`, `password`, `key-string`, `encrypted-password`) are
+**never** translated automatically, and the value is redacted from the output:
+a hash from one platform silently fails to authenticate on the other. Such
+lines are emitted as `# UNMAPPED:` markers for a human to recreate.
 
 ## 1. Start the RAG API
 
@@ -351,7 +432,7 @@ vector store chunk count.
 
 ```python workflow.py --config D:\Security_Compilence\sample_config.txt --source cisco --target junos```
 
-It uploads the config to the RAG, prints the Junos set commands + confidence +
+It uploads the config to the RAG, prints the translated commands + confidence +
 unresolved lines, shows where the normalized files were saved, and calls the
 ai_engine upload endpoint so the compliance report is generated.
 

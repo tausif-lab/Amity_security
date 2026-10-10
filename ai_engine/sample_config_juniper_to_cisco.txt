@@ -1,0 +1,17 @@
+hostname SRX-01
+ip ssh version 2
+no ip http server
+ntp server 10.0.0.1
+logging host 10.0.0.5
+logging buffered 4096
+snmp-server community public RO
+banner motd Unauthorized access prohibited
+!
+router ospf 1
+!
+interface GigabitEthernet0/0/0
+ ip address 192.168.1.1 255.255.255.0
+ ip ospf 1 area 0
+!
+interface GigabitEthernet0/0/1
+ shutdown

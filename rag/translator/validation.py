@@ -86,95 +86,183 @@ def _template_match(parts: List[str], template: List[str]) -> bool:
     return pi == len(parts) and ti == len(template)
 
 
-def validate_commands(commands: List[str]) -> Tuple[List[dict], List[dict]]:
+def validate_commands(commands: List[str], vendor: str = "junos") -> Tuple[List[dict], List[dict]]:
     """
     Validate a list of rendered commands. Returns (results, issues) where
     results is one dict per command and issues is a flat problem list.
+
+    `vendor` selects the target syntax so the same function validates Junos
+    `set` hierarchies and Cisco IOS block-structured configurations.
     """
+    is_cisco = (vendor or "").lower() in ("cisco", "ios")
     results = []
     issues = []
+
     for cmd in commands:
         stripped = cmd.strip()
-        if not stripped.startswith("set ") and not stripped.startswith("delete "):
-            if stripped.startswith("#"):
-                results.append({"command": stripped, "level": "ok", "messages": []})
-                continue
-            results.append({"command": stripped, "level": "error",
-                            "messages": ["Not a junos set/delete command: %s" % stripped[:60]]})
-            issues.append({"command": stripped, "level": "error",
-                           "messages": ["Not a junos set/delete command"]})
+        if stripped.startswith("#") or stripped == "!":
+            results.append({"command": stripped, "level": "ok", "messages": []})
             continue
 
-        body = stripped[4:].strip()
-        words = body.split()
-        if not words:
-            results.append({"command": stripped, "level": "error",
-                            "messages": ["Empty set command"]})
-            issues.append({"command": stripped, "level": "error", "messages": ["Empty set command"]})
-            continue
+        if is_cisco:
+            level, messages = _validate_cisco_line(stripped)
+        else:
+            level, messages = _validate_junos_line(stripped)
 
-        # drop trailing leaf value tokens for hierarchy matching
-        path_words = words
-        eq = next((i for i, w in enumerate(words) if "=" in w), None)
-        if eq is not None:
-            path_words = [w.split("=")[0] for w in words[:eq + 1]]
-
-        known = False
-        reason = ""
-        for template in JUNOS_HIERARCHY_TEMPLATES:
-            if _template_match(path_words, template):
-                known = True
-                break
-        if not known:
-            reason = f"Unknown Junos hierarchy: {body[:90]}"
-            results.append({"command": stripped, "level": "warning",
-                            "messages": [reason]})
-            issues.append({"command": stripped, "level": "warning", "messages": [reason]})
-            continue
-
-        results.append({"command": stripped, "level": "ok", "messages": []})
+        results.append({"command": stripped, "level": level, "messages": messages})
+        if messages:
+            issues.append({"command": stripped, "level": level, "messages": messages})
 
     return results, issues
 
 
+def _validate_junos_line(stripped: str) -> Tuple[str, List[str]]:
+    if not stripped.startswith("set ") and not stripped.startswith("delete "):
+        return "error", ["Not a junos set/delete command: %s" % stripped[:60]]
+
+    body = stripped[4:].strip()
+    words = body.split()
+    if not words:
+        return "error", ["Empty set command"]
+
+    # drop trailing leaf value tokens for hierarchy matching
+    path_words = words
+    eq = next((i for i, w in enumerate(words) if "=" in w), None)
+    if eq is not None:
+        path_words = [w.split("=")[0] for w in words[:eq + 1]]
+
+    for template in JUNOS_HIERARCHY_TEMPLATES:
+        if _template_match(path_words, template):
+            return "ok", []
+
+    return "warning", [f"Unknown Junos hierarchy: {body[:90]}"]
+
+
+# Cisco IOS top-level block headers and the indented commands allowed inside.
+CISCO_BLOCK_HEADERS = {
+    "hostname", "ip ssh version", "ip ssh time-out", "ntp server", "logging host",
+    "logging buffered", "snmp-server community", "snmp-server location",
+    "snmp-server contact", "banner", "ip name-server", "no ip http server",
+    "ip http server", "no cdp run", "cdp run", "aaa", "username", "enable secret",
+    "ip route", "service password-encryption", "no service password-encryption",
+    "line vty", "interface", "vlan", "router ospf", "router bgp",
+    "transport input", "no snmp-server community",
+}
+
+CISCO_IFACE_COMMANDS = {
+    "description", "ip address", "shutdown", "no shutdown", "mtu", "duplex",
+    "speed", "switchport", "no switchport", "ip ospf", "no ip ospf",
+    "channel-group", "no channel-group", "standby", "bandwidth", "ip helper-address",
+}
+
+CISCO_ROUTER_COMMANDS = {
+    "network", "router-id", "neighbor", "no neighbor", "redistribute", "passive-interface",
+    "no passive-interface", "auto-cost", "log-adjacency-changes",
+}
+
+
+def _validate_cisco_line(stripped: str) -> Tuple[str, List[str]]:
+    """Validate one Cisco IOS config line (a block header or a child command)."""
+    if stripped.endswith("!"):
+        return "ok", []
+    if stripped == "!" or not stripped:
+        return "ok", []
+
+    indented = stripped.startswith(" ") or stripped.startswith("\t")
+    tokens = stripped.split()
+
+    if indented:
+        command = tokens[0].lower()
+        if command in CISCO_IFACE_COMMANDS or command in CISCO_ROUTER_COMMANDS:
+            return "ok", []
+        # Sub-commands of switchport/logging/etc. that are not enumerated above.
+        if any(command.startswith(prefix) for prefix in
+               ("switchport", "ip ", "logging ", "snmp-server ", "ntp ", "standby ")):
+            return "ok", []
+        return "warning", [f"Unknown Cisco interface/router command: {stripped[:60]}"]
+
+    header = tokens[0].lower()
+    if header in {"interface", "vlan", "line", "router"}:
+        if len(tokens) < 2:
+            return "error", [f"Incomplete Cisco block header: {stripped[:60]}"]
+        return "ok", []
+
+    if any(stripped.lower().startswith(prefix + " ") or stripped.lower() == prefix
+           for prefix in CISCO_BLOCK_HEADERS if " " in prefix or True):
+        return "ok", []
+
+    return "warning", [f"Unknown Cisco global command: {stripped[:60]}"]
+
+
 # 2. SEMANTICS: cross-field checks
 
-def validate_semantics(ir, commands: List[str]) -> List[dict]:
+def validate_semantics(ir, commands: List[str], vendor: str = "junos") -> List[dict]:
+    """Cross-field checks that need the IR and the rendered output together."""
     problems = []
+    is_cisco = (vendor or "").lower() in ("cisco", "ios")
+    joined = " ".join(commands)
     vlan_ids = {str(v.vlan_id) for v in ir.vlans}
-    # access-port vlan must exist
-    for m in re.finditer(r"ethernet-switching vlan members ([\w\-,\[\] ]+)", " ".join(commands)):
-        val = m.group(1).strip()
-        for vid in re.findall(r"\d+", val):
-            if vlan_ids and vid not in vlan_ids:
+
+    if is_cisco:
+        # access/trunk vlan must be defined in the config
+        for m in re.finditer(r"switchport access vlan (\d+)", joined):
+            vid = m.group(1)
+            # An empty vlan set means the config declares no VLANs at all, which
+            # is itself the finding: the port references a VLAN nobody defined.
+            if vid not in vlan_ids:
                 problems.append({
-                    "level": "warning",
-                    "command": m.group(0),
-                    "messages": [f"VLAN {vid} referenced but not defined in config."],
+                    "level": "warning", "command": m.group(0),
+                    "messages": [f"VLAN {vid} assigned but not defined in config."],
                 })
+        # a trunk with no allowed-vlan list will carry nothing useful
+        if "switchport mode trunk" in joined and "switchport trunk allowed vlan" not in joined:
+            problems.append({
+                "level": "warning", "command": "switchport mode trunk",
+                "messages": ["Trunk port has no 'switchport trunk allowed vlan' list; "
+                             "it will carry no VLANs by default."],
+            })
+    else:
+        for m in re.finditer(r"ethernet-switching vlan members ([\w\-,\[\] ]+)", joined):
+            val = m.group(1).strip()
+            for vid in re.findall(r"\d+", val):
+                if vlan_ids and vid not in vlan_ids:
+                    problems.append({
+                        "level": "warning", "command": m.group(0),
+                        "messages": [f"VLAN {vid} referenced but not defined in config."],
+                    })
+
     # banned duplicates of host-name / router-id
-    host_count = sum(1 for c in commands if c.startswith("set system host-name "))
+    if is_cisco:
+        host_count = sum(1 for c in commands if c.strip().lower().startswith("hostname "))
+    else:
+        host_count = sum(1 for c in commands if c.startswith("set system host-name "))
     if host_count > 1:
-        problems.append({"level": "error", "command": "system host-name",
+        problems.append({"level": "error", "command": "host-name",
                          "messages": ["Multiple host-name statements."]})
     return problems
 
 
 # 3. CONSISTENCY: whole-config invariants
 
-def check_consistency(ir, commands: List[str]) -> List[dict]:
+def check_consistency(ir, commands: List[str], vendor: str = "junos") -> List[dict]:
     problems = []
-    # every access interface should have a vlan members; trunk must define mode
+    is_cisco = (vendor or "").lower() in ("cisco", "ios")
+
     for itf in ir.interfaces:
-        j = itf.juniper_name or itf.name
+        if is_cisco:
+            j = itf.cisco_name or itf.name
+        else:
+            j = itf.juniper_name or itf.name
         if itf.vlan_mode == "access" and not itf.vlan_members:
             problems.append({
                 "level": "warning", "command": f"interfaces {j}",
-                "messages": [f"Interface {itf.cisco_name} is access mode but has no vlan assigned."]})
+                "messages": [f"Interface {itf.cisco_name or itf.juniper_name} is access "
+                             "mode but has no vlan assigned."]})
         if itf.vlan_mode == "trunk" and itf.vlan_members:
             problems.append({
                 "level": "info", "command": f"interfaces {j}",
-                "messages": [f"Interface {itf.cisco_name} trunk: verify allowed vlans list in Junos."]})
+                "messages": [f"Interface {itf.cisco_name or itf.juniper_name} trunk: "
+                             "verify allowed vlans list on the target device."]})
     return problems
 
 

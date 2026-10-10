@@ -5,7 +5,9 @@ import pgvector.django.vector
 
 
 class Migration(migrations.Migration):
-    dependencies = [("core", "0001_initial")]
+    # 0001a enables pgvector, which `embedding vector(384)` requires. It must
+    # run before this table is created, including on a fresh test database.
+    dependencies = [("core", "0001a_enable_pgvector")]
 
     operations = [
         migrations.CreateModel(

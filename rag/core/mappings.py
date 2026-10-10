@@ -13,7 +13,6 @@ PREFIX_MAPPINGS = {
     "snmp-server contact": "set snmp contact",
     "banner motd": "set system login message",
     "banner login": "set system login message",
-    "username": "set system login user",
 }
 
 # Substring-matched phrases used only when args are already fully defined.
@@ -22,8 +21,16 @@ SUBSTRING_MAPPINGS = {
     "cdp run": "set protocols lldp interface all",
     "service timestamps log datetime": "set system syslog time-format year",
     "aaa new-model": "set system authentication",
+    "no ip http server": "delete system services web-management http",
+    "ip http server": "set system services web-management http",
+    "ip ssh time-out": "set system services ssh idle-timeout",
     "enable secret": "# UNMAPPED: Cisco enable secret has no direct Junos analog (use root auth)",
-    "transport input ssh": "set system services ssh",
+    # A Cisco type7 hash is a reversible, vendor-specific encoding. Emitting it
+    # inside a Junos hierarchy produces a config that silently fails
+    # authentication, so these must go to review instead of the prefix table.
+    "username": "# UNMAPPED: Cisco type7 credential hash must be re-created with "
+                "'set system login user <name> authentication encrypted-password' on Junos",
+    "transport input ssh": "set system services ssh protocol-version v2",
 }
 
 
@@ -51,7 +58,16 @@ def table_translate(text: str) -> tuple:
 
         key = next((k for k in PREFIX_MAPPINGS if line.lower().startswith(k)), None)
         if key:
-            out.append(PREFIX_MAPPINGS[key] + (" " + line[len(key):].strip() if line[len(key):].strip() else ""))
+            args = line[len(key):].strip()
+            rendered = PREFIX_MAPPINGS[key] + ((" " + args) if args else "")
+            # Junos quotes free-form banner text; Cisco `banner motd #text#`
+            # uses the delimiter characters, which must be stripped first.
+            if key.startswith("banner") and args:
+                cleaned = args.strip()
+                if cleaned.startswith("#") and cleaned.endswith("#") and len(cleaned) > 1:
+                    cleaned = cleaned[1:-1]
+                rendered = PREFIX_MAPPINGS[key] + ' "' + cleaned.strip() + '"'
+            out.append(rendered)
             continue
 
         sub = next((s for s in SUBSTRING_MAPPINGS if s in line.lower()), None)

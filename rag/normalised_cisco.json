@@ -1,28 +1,45 @@
 {
-  "run_id": null,
-  "source_vendor": "cisco",
+  "run_id": 98,
+  "source_vendor": "juniper",
   "target_vendor": "cisco",
-  "saved_path": "D:\\Security_Compilence\\rag\\normalised_cisco.json",
+  "saved_path": "D:\\Amity_security\\rag\\normalised_cisco.json",
   "status": "done",
   "overall_confidence": 1.0,
-  "confidence_by_category": {},
+  "confidence_by_category": {
+    "Global Systems": 1.0,
+    "Other": 1.0,
+    "Interfaces": 1.0,
+    "OSPF": 1.0
+  },
   "set_commands": [
-    "hostname pass-thru",
-    "interface GigabitEthernet0/1",
-    " ip address 10.0.0.1 255.255.255.252",
-    " no shutdown",
-    "!"
+    "hostname SRX-01",
+    "ip ssh version 2",
+    "no ip http server",
+    "ntp server 10.0.0.1",
+    "logging host 10.0.0.5",
+    "logging buffered 4096",
+    "snmp-server community public RO",
+    "banner motd Unauthorized access prohibited",
+    "!",
+    "router ospf 1",
+    "!",
+    "interface GigabitEthernet0/0/0",
+    " ip address 192.168.1.1 255.255.255.0",
+    " ip ospf 1 area 0",
+    "!",
+    "interface GigabitEthernet0/0/1",
+    " shutdown"
   ],
-  "normalized_config": "hostname pass-thru\ninterface GigabitEthernet0/1\n ip address 10.0.0.1 255.255.255.252\n no shutdown\n!",
+  "normalized_config": "hostname SRX-01\nip ssh version 2\nno ip http server\nntp server 10.0.0.1\nlogging host 10.0.0.5\nlogging buffered 4096\nsnmp-server community public RO\nbanner motd Unauthorized access prohibited\n!\nrouter ospf 1\n!\ninterface GigabitEthernet0/0/0\n ip address 192.168.1.1 255.255.255.0\n ip ospf 1 area 0\n!\ninterface GigabitEthernet0/0/1\n shutdown",
   "ir": {
-    "vendor": "cisco",
+    "vendor": "juniper",
     "interfaces": [
       {
-        "name": "ge-0/0/1",
-        "cisco_name": "GigabitEthernet0/1",
+        "name": "GigabitEthernet0/0/0",
+        "cisco_name": "GigabitEthernet0/0/0",
         "description": null,
         "ipv4": [
-          "10.0.0.1/30"
+          "192.168.1.1/24"
         ],
         "ipv6": [],
         "vlan_members": null,
@@ -31,47 +48,514 @@
         "mtu": null,
         "cdp_enabled": true,
         "ip_ospf": null,
+        "juniper_name": "ge-0/0/0"
+      },
+      {
+        "name": "GigabitEthernet0/0/1",
+        "cisco_name": "GigabitEthernet0/0/1",
+        "description": null,
+        "ipv4": [],
+        "ipv6": [],
+        "vlan_members": null,
+        "vlan_mode": null,
+        "enabled": false,
+        "mtu": null,
+        "cdp_enabled": true,
+        "ip_ospf": null,
         "juniper_name": "ge-0/0/1"
       }
     ],
     "vlans": [],
-    "ospf": [],
+    "ospf": [
+      {
+        "process_id": "1",
+        "networks": [],
+        "router_id": null,
+        "passive_interfaces": [],
+        "area_interfaces": [
+          {
+            "area": "0",
+            "interface": "ge-0/0/0"
+          }
+        ]
+      }
+    ],
     "bgp": [],
     "static_routes": [],
     "acls": [],
     "global_config": {
-      "hostname": "pass-thru",
+      "hostname": "SRX-01",
       "snmp": {
-        "community_strings": [],
+        "community_strings": [
+          "public"
+        ],
         "location": null,
         "contact": null
       },
       "logging": {
-        "hosts": [],
-        "buffered": false
+        "hosts": [
+          "10.0.0.5"
+        ],
+        "buffered": true
       },
       "ntp": {
-        "servers": []
+        "servers": [
+          "10.0.0.1"
+        ]
       },
       "aaa": {
         "methods": []
       },
-      "ssh_version": null,
-      "telnet_enabled": false,
-      "motd": null,
+      "ssh_version": 2,
+      "telnet_enabled": true,
+      "motd": "Unauthorized access prohibited",
       "cdp_enabled": true,
       "ip_http_server": false,
       "ip_dns_servers": [],
-      "raw_commands": []
+      "raw_commands": [],
+      "password_encryption": "sha512",
+      "password_hashes": [
+        "\"$6$abc123$...\""
+      ]
     }
   },
-  "explanations": [],
-  "warnings": [
-    "Target vendor is cisco - config passed through without conversion."
+  "explanations": [
+    {
+      "source_line": "set system host-name SRX-01",
+      "target_command": "hostname SRX-01",
+      "mapping": "hostname",
+      "category": "Global Systems",
+      "confidence": 1.0,
+      "validated": true,
+      "llm_assisted": false,
+      "memorized": true,
+      "reasons": [
+        "Hostname",
+        "Source: set system host-name <name>",
+        "Target: hostname <name>",
+        "Matched verified translation memory."
+      ],
+      "evidence": [
+        {
+          "source": "https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/sec_usr_ssh/configuration/xe-16/sec-usr-ssh-xe-16-book/sec-secure-shell-v2.html",
+          "score": 0.5167,
+          "content": "Specifies the hostname.",
+          "section": "Device(config)# hostname host1"
+        },
+        {
+          "source": "https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/sec_usr_ssh/configuration/xe-16/sec-usr-ssh-xe-16-book/sec-secure-shell-v2.html",
+          "score": 0.5167,
+          "content": "Specifies the hostname.",
+          "section": "Device(config)# hostname host1"
+        },
+        {
+          "source": "https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/sec_usr_ssh/configuration/xe-16/sec-usr-ssh-xe-16-book/sec-secure-shell-v2.html",
+          "score": 0.5167,
+          "content": "Specifies the hostname.",
+          "section": "Device(config)# hostname host1"
+        }
+      ]
+    },
+    {
+      "source_line": "set system services ssh protocol-version v2",
+      "target_command": "ip ssh version 2",
+      "mapping": "ssh",
+      "category": "Global Systems",
+      "confidence": 1.0,
+      "validated": true,
+      "llm_assisted": false,
+      "memorized": true,
+      "reasons": [
+        "SSH version",
+        "Source: set system services ssh protocol-version v2",
+        "Target: ip ssh version 2",
+        "Matched verified translation memory."
+      ],
+      "evidence": [
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\text_files\\CISCO_RAG.docx",
+          "score": 0.7124,
+          "content": "Configure SSH version 2.",
+          "section": "ip ssh authentication-retries 5"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\text_files\\CISCO_RAG.docx",
+          "score": 0.7124,
+          "content": "Configure SSH version 2.",
+          "section": "ip ssh authentication-retries 5"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\text_files\\CISCO_RAG.docx",
+          "score": 0.7124,
+          "content": "Configure SSH version 2.",
+          "section": "ip ssh authentication-retries 5"
+        }
+      ]
+    },
+    {
+      "source_line": "delete system services web-management http",
+      "target_command": "no ip http server",
+      "mapping": "http_disabled",
+      "category": "Other",
+      "confidence": 1.0,
+      "validated": true,
+      "llm_assisted": false,
+      "memorized": true,
+      "reasons": [
+        "HTTP disabled",
+        "Source: delete system services web-management http",
+        "Target: no ip http server",
+        "Matched verified translation memory."
+      ],
+      "evidence": [
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\configuring_accounting.pdf",
+          "score": 0.3998,
+          "content": "!Enable accounting for all network-related service requests and list the default method to",
+          "section": "Device(config)# aaa accounting exec default start-stop group radius"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\configuring_accounting.pdf",
+          "score": 0.3998,
+          "content": "!Enable accounting for all network-related service requests and list the default method to",
+          "section": "Device(config)# aaa accounting exec default start-stop group radius"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\configuring_accounting.pdf",
+          "score": 0.3998,
+          "content": "!Enable accounting for all network-related service requests and list the default method to",
+          "section": "Device(config)# aaa accounting exec default start-stop group radius"
+        }
+      ]
+    },
+    {
+      "source_line": "set system ntp server 10.0.0.1",
+      "target_command": "ntp server 10.0.0.1",
+      "mapping": "ntp",
+      "category": "Global Systems",
+      "confidence": 1.0,
+      "validated": true,
+      "llm_assisted": false,
+      "memorized": true,
+      "reasons": [
+        "NTP server",
+        "Source: set system ntp server <addr>",
+        "Target: ntp server <addr>",
+        "Matched verified translation memory."
+      ],
+      "evidence": [
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\ntp-configuration-guide.pdf",
+          "score": 0.7367,
+          "content": "be configured. • ip-address: The IP address of the time server providing the clock synchronization. • number: NTP version number. The range is 1 to 4. By default, version 4 is selected.",
+          "section": "Before you configure this command, the VRF must"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\ntp-configuration-guide.pdf",
+          "score": 0.7367,
+          "content": "be configured. • ip-address: The IP address of the time server providing the clock synchronization. • number: NTP version number. The range is 1 to 4. By default, version 4 is selected.",
+          "section": "Before you configure this command, the VRF must"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\ntp-configuration-guide.pdf",
+          "score": 0.7012,
+          "content": "Example: Use the no form of this command to disable NTP",
+          "section": "Enables NTP authentication.[no] ntp authenticateStep 3"
+        }
+      ]
+    },
+    {
+      "source_line": "set system syslog host 10.0.0.5",
+      "target_command": "logging host 10.0.0.5",
+      "mapping": "logging_host",
+      "category": "Global Systems",
+      "confidence": 1.0,
+      "validated": true,
+      "llm_assisted": false,
+      "memorized": true,
+      "reasons": [
+        "Syslog host",
+        "Source: set system syslog host <addr>",
+        "Target: logging host <addr>",
+        "Matched verified translation memory."
+      ],
+      "evidence": [
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\text_files\\CISCO_RAG.docx",
+          "score": 0.5605,
+          "content": "Each log message that is generated by a Cisco IOS XE device is assigned one of eight severities that range from level 0, Emergencies, through level 7, Debug. Unless specifically required, you are advised to avoid logging at level 7. Logging at level 7 produces an elevated CPU load on the device that can lead to device and network instability. The global configuration command logging trap level is used in order to specify which logging messages are sent to remote syslog servers. The level specifi",
+          "section": "Logging Level"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\text_files\\CISCO_RAG.docx",
+          "score": 0.5605,
+          "content": "Each log message that is generated by a Cisco IOS XE device is assigned one of eight severities that range from level 0, Emergencies, through level 7, Debug. Unless specifically required, you are advised to avoid logging at level 7. Logging at level 7 produces an elevated CPU load on the device that can lead to device and network instability. The global configuration command logging trap level is used in order to specify which logging messages are sent to remote syslog servers. The level specifi",
+          "section": "Logging Level"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\text_files\\CISCO_RAG.docx",
+          "score": 0.5605,
+          "content": "Each log message that is generated by a Cisco IOS XE device is assigned one of eight severities that range from level 0, Emergencies, through level 7, Debug. Unless specifically required, you are advised to avoid logging at level 7. Logging at level 7 produces an elevated CPU load on the device that can lead to device and network instability. The global configuration command logging trap level is used in order to specify which logging messages are sent to remote syslog servers. The level specifi",
+          "section": "Logging Level"
+        }
+      ]
+    },
+    {
+      "source_line": "set system syslog file messages any any",
+      "target_command": "logging buffered 4096",
+      "mapping": "logging_buffered",
+      "category": "Other",
+      "confidence": 1.0,
+      "validated": true,
+      "llm_assisted": false,
+      "memorized": true,
+      "reasons": [
+        "Local logging",
+        "Source: set system syslog file messages any any",
+        "Target: logging buffered 4096",
+        "Matched verified translation memory."
+      ],
+      "evidence": [
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\text_files\\CISCO_RAG.docx",
+          "score": 0.5767,
+          "content": "Refer to the Cisco IOS XE Embedded Syslog Manager for more information.",
+          "section": "logging source-interface Loopback 0"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\text_files\\CISCO_RAG.docx",
+          "score": 0.5767,
+          "content": "Refer to the Cisco IOS XE Embedded Syslog Manager for more information.",
+          "section": "logging source-interface Loopback 0"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\text_files\\CISCO_RAG.docx",
+          "score": 0.5767,
+          "content": "Refer to the Cisco IOS XE Embedded Syslog Manager for more information.",
+          "section": "logging source-interface Loopback 0"
+        }
+      ]
+    },
+    {
+      "source_line": "set snmp community public authorization read-only",
+      "target_command": "snmp-server community public RO",
+      "mapping": "snmp_community",
+      "category": "Global Systems",
+      "confidence": 1.0,
+      "validated": true,
+      "llm_assisted": false,
+      "memorized": true,
+      "reasons": [
+        "SNMP community",
+        "Source: set snmp community <comm> authorization read-only",
+        "Target: snmp-server community <comm> RO",
+        "Matched verified translation memory."
+      ],
+      "evidence": [
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\text_files\\CISCO_RAG.docx",
+          "score": 0.8038,
+          "content": "In addition to the community string, an ACL can be applied that further restricts SNMP access to a select group of source IP addresses. This configuration restricts SNMP read-only access to end host devices that reside in the 192.168.100.0/24 address space and restricts SNMP readwrite access to only the end host device at 192.168.100.1. Note: The devices that are permitted by these ACLs require the proper community string in order to access the requested SNMP information.",
+          "section": "SNMP Community Strings with ACLs"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\text_files\\CISCO_RAG.docx",
+          "score": 0.8038,
+          "content": "In addition to the community string, an ACL can be applied that further restricts SNMP access to a select group of source IP addresses. This configuration restricts SNMP read-only access to end host devices that reside in the 192.168.100.0/24 address space and restricts SNMP readwrite access to only the end host device at 192.168.100.1. Note: The devices that are permitted by these ACLs require the proper community string in order to access the requested SNMP information.",
+          "section": "SNMP Community Strings with ACLs"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\text_files\\CISCO_RAG.docx",
+          "score": 0.8038,
+          "content": "In addition to the community string, an ACL can be applied that further restricts SNMP access to a select group of source IP addresses. This configuration restricts SNMP read-only access to end host devices that reside in the 192.168.100.0/24 address space and restricts SNMP readwrite access to only the end host device at 192.168.100.1. Note: The devices that are permitted by these ACLs require the proper community string in order to access the requested SNMP information.",
+          "section": "SNMP Community Strings with ACLs"
+        }
+      ]
+    },
+    {
+      "source_line": "set system login message \"Unauthorized access prohibited\"",
+      "target_command": "banner motd Unauthorized access prohibited",
+      "mapping": "banner",
+      "category": "Other",
+      "confidence": 1.0,
+      "validated": true,
+      "llm_assisted": false,
+      "memorized": true,
+      "reasons": [
+        "Login banner",
+        "Source: set system login message \"<text>\"",
+        "Target: banner motd <text>",
+        "Matched verified translation memory."
+      ],
+      "evidence": [
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\configuring_authentication.pdf",
+          "score": 0.6311,
+          "content": "Before you can use the enable password as the login authentication method, you need to define the enable password. For more information about defining enable passwords, see chapter “Controlling Switch Access",
+          "section": "Device(config)# aaa authentication login default enable"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\configuring_authentication.pdf",
+          "score": 0.6311,
+          "content": "Before you can use the enable password as the login authentication method, you need to define the enable password. For more information about defining enable passwords, see chapter “Controlling Switch Access",
+          "section": "Device(config)# aaa authentication login default enable"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\configuring_authentication.pdf",
+          "score": 0.6311,
+          "content": "Before you can use the enable password as the login authentication method, you need to define the enable password. For more information about defining enable passwords, see chapter “Controlling Switch Access",
+          "section": "Device(config)# aaa authentication login default enable"
+        }
+      ]
+    },
+    {
+      "source_line": "set interfaces ge-0/0/0 unit 0 family inet address 192.168.1.1/24",
+      "target_command": "interface GigabitEthernet0/0/0\n ip address 192.168.1.1 255.255.255.0",
+      "mapping": "iface_addr",
+      "category": "Interfaces",
+      "confidence": 1.0,
+      "validated": true,
+      "llm_assisted": false,
+      "memorized": true,
+      "reasons": [
+        "Interface address",
+        "Source: set interfaces <if> unit 0 family inet address <ip/prefix>",
+        "Target: interface <if>\n ip address <ip> <mask>",
+        "Matched verified translation memory."
+      ],
+      "evidence": [
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\ntp-configuration-guide.pdf",
+          "score": 0.4696,
+          "content": "Use the no form of this command to disable the interface",
+          "section": "PurposeCommand or Action"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\ntp-configuration-guide.pdf",
+          "score": 0.4696,
+          "content": "Use the no form of this command to disable the interface",
+          "section": "PurposeCommand or Action"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\text_files\\Juniper_RAG.docx",
+          "score": 0.4689,
+          "content": "interface—To view this statement in the configuration. interface-control—To add this statement to the configuration.",
+          "section": "Required Privilege Level"
+        }
+      ]
+    },
+    {
+      "source_line": "delete interfaces ge-0/0/1 disable",
+      "target_command": "interface GigabitEthernet0/0/1\n shutdown",
+      "mapping": "iface_disabled",
+      "category": "Interfaces",
+      "confidence": 1.0,
+      "validated": true,
+      "llm_assisted": false,
+      "memorized": true,
+      "reasons": [
+        "Interface admin down",
+        "Source: set interfaces <if> disable",
+        "Target: interface <if>\n shutdown",
+        "Matched verified translation memory."
+      ],
+      "evidence": [
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\ntp-configuration-guide.pdf",
+          "score": 0.8426,
+          "content": "Use the no form of this command to disable the interface",
+          "section": "PurposeCommand or Action"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\ntp-configuration-guide.pdf",
+          "score": 0.8426,
+          "content": "Use the no form of this command to disable the interface",
+          "section": "PurposeCommand or Action"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\ntp-configuration-guide.pdf",
+          "score": 0.5825,
+          "content": "Use the no form of this command to disable the interface from receiving NTP broadcast packets.",
+          "section": "999999.Device(config)# ntp broadcastdelay 100"
+        }
+      ]
+    },
+    {
+      "source_line": "set protocols ospf",
+      "target_command": "",
+      "mapping": "ospf",
+      "category": "OSPF",
+      "confidence": 1.0,
+      "validated": true,
+      "llm_assisted": false,
+      "memorized": false,
+      "reasons": [
+        "OSPF process",
+        "Source: set protocols ospf",
+        "Target: router ospf <pid>"
+      ],
+      "evidence": [
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\ntp-configuration-guide.pdf",
+          "score": 0.4539,
+          "content": "Protocol feature support has been introduced.",
+          "section": "Network Time Protocol (NTP): Network Time"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\pdf_files\\ntp-configuration-guide.pdf",
+          "score": 0.4539,
+          "content": "Protocol feature support has been introduced.",
+          "section": "Network Time Protocol (NTP): Network Time"
+        },
+        {
+          "source": "https://www.juniper.net/documentation/us/en/software/junos/user-access-evo/user-access/topics/topic-map/junos-software-remote-access-overview.html",
+          "score": 0.513,
+          "content": "By configuring an ordered set of ciphers, key-exchange methods, or message authentication codes (MACs), the newly defined set is applied to both server and",
+          "section": "Note:"
+        }
+      ]
+    },
+    {
+      "source_line": "set protocols ospf area 0 interface ge-0/0/0",
+      "target_command": "interface GigabitEthernet0/0/0\n ip ospf 1 area 0",
+      "mapping": "ospf_area",
+      "category": "OSPF",
+      "confidence": 1.0,
+      "validated": true,
+      "llm_assisted": false,
+      "memorized": true,
+      "reasons": [
+        "OSPF area binding",
+        "Source: set protocols ospf area <a> interface <if>",
+        "Target: interface <if>\n ip ospf <pid> area <a>",
+        "Matched verified translation memory."
+      ],
+      "evidence": [
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\text_files\\Juniper_RAG.docx",
+          "score": 0.5028,
+          "content": "interface—To view this statement in the configuration. interface-control—To add this statement to the configuration.",
+          "section": "Required Privilege Level"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\text_files\\Juniper_RAG.docx",
+          "score": 0.5028,
+          "content": "interface—To view this statement in the configuration. interface-control—To add this statement to the configuration.",
+          "section": "Required Privilege Level"
+        },
+        {
+          "source": "D:\\Security_Compilence\\rag\\knowledge_base\\text_files\\Juniper_RAG.docx",
+          "score": 0.5028,
+          "content": "interface—To view this statement in the configuration. interface-control—To add this statement to the configuration.",
+          "section": "Required Privilege Level"
+        }
+      ]
+    }
   ],
+  "warnings": [],
   "unresolved": [],
-  "rounds": 0,
-  "ai_engine_path": "D:\\Security_Compilence\\ai_engine\\normalised_cisco.json",
-  "baseline_path": "D:\\Security_Compilence\\ai_engine\\normalised_cisco_baseline.json",
-  "passthrough": true
+  "rounds": 1,
+  "ai_engine_path": "D:\\Amity_security\\ai_engine\\normalised_cisco.json",
+  "baseline_path": "D:\\Amity_security\\ai_engine\\normalised_cisco_baseline.json",
+  "passthrough": false
 }

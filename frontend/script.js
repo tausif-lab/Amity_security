@@ -24,6 +24,37 @@ const demoMappingSuggestions = {
   "secure-remote-access version-two": "management.ssh_version = 2",
 };
 
+const VENDOR_LABELS = {
+  cisco: "Cisco IOS",
+  juniper: "Juniper Junos",
+  junos: "Juniper Junos",
+};
+
+// Keep the two dropdowns meaningful: picking a source auto-selects the other
+// vendor as the target. Same vendor on both sides means "no conversion", which
+// the API handles as an explicit passthrough.
+function syncTranslateVendors(changedId) {
+  const sourceSelect = document.getElementById("sourceVendor");
+  const targetSelect = document.getElementById("targetVendor");
+  const hint = document.getElementById("translateHint");
+  if (!sourceSelect || !targetSelect) return;
+
+  const source = sourceSelect.value;
+  const preferredTarget = source === "cisco" ? "junos" : "cisco";
+
+  if (changedId === "sourceVendor" || targetSelect.value === source) {
+    targetSelect.value = preferredTarget;
+  }
+
+  const target = targetSelect.value;
+  if (hint) {
+    hint.textContent =
+      source === target
+        ? `${VENDOR_LABELS[source]} → ${VENDOR_LABELS[target]} (no conversion — passthrough)`
+        : `${VENDOR_LABELS[source]} → ${VENDOR_LABELS[target]}`;
+  }
+}
+
 // File name display listener
 if (translateFile) {
   translateFile.addEventListener("change", (e) => {
@@ -31,6 +62,11 @@ if (translateFile) {
     translateFileText.textContent = fileName;
   });
 }
+
+["sourceVendor", "targetVendor"].forEach((id) => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener("change", () => syncTranslateVendors(id));
+});
 
 // Handle form submission to FastAPI backend
 if (translateForm) {
@@ -51,27 +87,8 @@ if (translateForm) {
     formData.append("source_vendor", sourceVendor);
     formData.append("target_vendor", targetVendor);
 
-  //   setTranslateLoading(true);
-  //   // showTranslateStatus(
-  //   //   "Translating configuration and running compliance checks...",
-  //   //   "loading",
-  //   // );
-  //   showTranslateStatus('Translation and compliance audit completed successfully!', 'success');
-
-  //   // Render results using your existing display function or custom UI handler
-  //   displayMultipleResults([ {
-  //   id: data.ai_engine_handoff?.upload_id || 'N/A',
-  //   status: data.ai_engine_handoff?.status || 'done',
-  //   vendor: targetVendor,
-  //   compliance_report: data.ai_engine_handoff?.compliance_report,
-  //   baseline_json: data.ai_engine_handoff?.baseline_json
-  //  }]);
-
-  //  setTranslateLoading(false);
-
-  //   try {
-  setTranslateLoading(true);
-  showTranslateStatus("Translating configuration and running compliance checks...", "loading");
+    setTranslateLoading(true);
+    showTranslateStatus("Translating configuration and running compliance checks...", "loading");
 
     try {
       // Calls the FastAPI route which handles translation and hands off to Django
@@ -89,23 +106,42 @@ if (translateForm) {
         throw new Error(data.detail || "Translation failed");
       }
 
-      showTranslateStatus(
-        "Translation and compliance audit completed successfully!",
-        "success",
-      );
+      renderTranslation(data, targetVendor);
+
+      const handoff = data.ai_engine_handoff || {};
+      if (handoff.success && handoff.compliance_report) {
+        showTranslateStatus(
+          "Translation and compliance audit completed successfully!",
+          "success",
+        );
+      } else if (handoff.success) {
+        showTranslateStatus(
+          "Translation completed. The compliance audit needs a second pass — use Analyze Configurations to view it.",
+          "success",
+        );
+      } else {
+        showTranslateStatus(
+          `Translation completed, but the compliance hand-off failed: ${
+            handoff.error || "Django API unavailable on port 8000"
+          }`,
+          "error",
+        );
+      }
 
       // Render results using your existing display function or custom UI handler
       displayMultipleResults([
         {
-          id: data.ai_engine_handoff?.upload_id || "N/A",
-          status: data.ai_engine_handoff?.status || "done",
+          id: handoff.upload_id || "N/A",
+          status: handoff.status || "done",
           vendor: targetVendor,
-          compliance_report: data.ai_engine_handoff?.compliance_report,
-          baseline_json: data.ai_engine_handoff?.baseline_json,
+          compliance_report: handoff.compliance_report,
+          baseline_json: handoff.baseline_json,
         },
       ]);
-      console.log('Download params:', data.download_source_stem, data.download_target_vendor);
-      downloadTranslatedFile(data.download_source_stem, data.download_target_vendor);
+
+      if (data.download_source_stem) {
+        downloadTranslatedFile(data.download_source_stem, data.download_target_vendor);
+      }
       setTranslateLoading(false);
     } catch (error) {
       console.error("Translation Error:", error);
@@ -113,6 +149,47 @@ if (translateForm) {
       setTranslateLoading(false);
     }
   });
+}
+
+// Show the translated configuration itself, not only the downstream report.
+function renderTranslation(data, targetVendor) {
+  let panel = document.getElementById("translationResult");
+  if (!panel) {
+    panel = document.createElement("div");
+    panel.id = "translationResult";
+    panel.className = "form-card";
+    panel.style.marginTop = "20px";
+    translateForm.closest(".form-card").appendChild(panel);
+  }
+
+  const commands = data.set_commands || [];
+  const unresolved = data.unresolved || [];
+
+  const meta = [
+    `Direction: ${VENDOR_LABELS[data.source_vendor] || data.source_vendor} → ${
+      VENDOR_LABELS[data.target_vendor] || targetVendor
+    }`,
+    `Confidence: ${
+      data.overall_confidence != null ? Math.round(data.overall_confidence * 100) : 0
+    }%`,
+    `Status: ${data.status || "done"}`,
+  ];
+  if (unresolved.length) meta.push(`${unresolved.length} line(s) need human review`);
+
+  panel.innerHTML = `
+    <h3>${escapeHtml(VENDOR_LABELS[data.target_vendor] || targetVendor)} output</h3>
+    <p style="font-size:13px;color:var(--text-secondary)">${escapeHtml(meta.join("  |  "))}</p>
+    <pre style="background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;overflow:auto;max-height:420px;font-size:12.5px">${escapeHtml(
+      commands.join("\n") || "(no commands produced)",
+    )}</pre>
+    ${
+      unresolved.length
+        ? `<details style="margin-top:10px"><summary style="cursor:pointer">Lines needing human review (${unresolved.length})</summary>
+           <ul style="font-size:13px">${unresolved
+             .map((u) => `<li>${escapeHtml(u)}</li>`)
+             .join("")}</ul></details>`
+        : ""
+    }`;
 }
 
 function showTranslateStatus(message, type) {
@@ -168,6 +245,7 @@ function setTranslateLoading(isLoading) {
 // Initialize with one default upload row
 document.addEventListener("DOMContentLoaded", () => {
   addDeviceRow();
+  syncTranslateVendors();
 });
 
 // Add new device row

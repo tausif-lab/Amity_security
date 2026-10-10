@@ -36,12 +36,19 @@ def ir_to_baseline(ir: dict, target_vendor: str) -> dict:
 
     The output passes ai_engine.services.validator.validate_normalized_json and
     is consumable by compliance.services.rule_engine.compliance_engine.
+
+    `target_vendor` decides which way the security booleans read: a translated
+    Cisco config has telnet off by default, whereas Junos enables telnet only
+    when `set system services telnet` is present (which the IR records).
     """
     gc = ir.get("global_config", {}) if ir else {}
     snmp = gc.get("snmp", {}) or {}
     logging_ir = gc.get("logging", {}) or {}
     ntp_ir = gc.get("ntp", {}) or {}
     aaa = gc.get("aaa", {}) or {}
+
+    target = (target_vendor or "cisco").lower()
+    is_cisco_target = target in ("cisco", "ios")
 
     protocols = []
     for proto in ("ospf", "bgp", "eigrp", "rip"):
@@ -53,21 +60,25 @@ def ir_to_baseline(ir: dict, target_vendor: str) -> dict:
 
     interfaces = []
     for i in (ir or {}).get("interfaces", []):
+        # Name the interface the way the TARGET platform spells it, because the
+        # compliance rule set is chosen by target vendor.
+        name = (i.get("cisco_name") if is_cisco_target
+                else i.get("juniper_name") or i.get("name"))
         interfaces.append({
-            "name": i.get("juniper_name") or i.get("name") or i.get("cisco_name"),
+            "name": name or i.get("name") or i.get("cisco_name"),
             "admin_down": not bool(i.get("enabled", True)),
             "cdp_enabled": i.get("cdp_enabled", True),
             "lldp_enabled": None,
         })
 
     return {
-        "vendor": (target_vendor or "cisco").lower(),
+        "vendor": ("cisco" if is_cisco_target else target),
         "hostname": gc.get("hostname"),
         "os_version": None,
         "management": {
             "ssh_version": gc.get("ssh_version"),
-            "telnet_enabled": gc.get("telnet_enabled", False),
-            "http_enabled": gc.get("ip_http_server", False),
+            "telnet_enabled": bool(gc.get("telnet_enabled", False)),
+            "http_enabled": bool(gc.get("ip_http_server", False)),
             "https_enabled": None,
             "snmp": {
                 "version": None,
@@ -76,11 +87,11 @@ def ir_to_baseline(ir: dict, target_vendor: str) -> dict:
         },
         "authentication": {
             "aaa_methods": aaa.get("methods") or [],
-            "password_encryption": None,
+            "password_encryption": gc.get("password_encryption"),
         },
         "logging": {
             "remote_servers": logging_ir.get("hosts") or [],
-            "local_buffered": logging_ir.get("buffered", False),
+            "local_buffered": bool(logging_ir.get("buffered", False)),
         },
         "ntp": {
             "servers": ntp_ir.get("servers") or [],

@@ -12,12 +12,12 @@ Vendor flow (user is asked first):
 """
 
 import json
+import sys
+from pathlib import Path
 
 import requests
 from fastapi import APIRouter, File, HTTPException, UploadFile
-from fastapi.responses import JSONResponse
-from pathlib import Path
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from .normalizer import (
     ai_engine_baseline_filepath,
@@ -29,15 +29,43 @@ from .normalizer import (
 )
 from .schemas import AskRequest, TranslateRequest, VendorPair
 
+# The RAG service is started from inside rag/ (flat imports), so translator/
+# sits on sys.path. Import the parsers here so a passthrough translation can
+# still build a correct vendor-neutral IR.
+RAG_DIR = Path(__file__).resolve().parents[1]
+if str(RAG_DIR) not in sys.path:
+    sys.path.insert(0, str(RAG_DIR))
+
+from translator import cisco_parser  # noqa: E402
+from translator import juniper_parser  # noqa: E402
+from translator import ir as cisco_ir  # noqa: E402
+from translator import juniper_ir  # noqa: E402
+
 router = APIRouter(prefix="/api")
 
-# Vendor support: deterministic pipeline is Cisco IOS -> Junos; cisco target
-# is an identity passthrough (no conversion).
-CANONICAL_TARGETS = {"junos", "juniper", "cisco"}
-SUPPORTED_SOURCES = {"cisco", "ios"}
-VENDOR_PAIRS = [VendorPair(source="cisco", target="junos"),
-                VendorPair(source="cisco", target="juniper"),
-                VendorPair(source="cisco", target="cisco")]
+# Both directions are first-class: the deterministic pipeline is bidirectional
+# (Cisco IOS <-> Juniper Junos) because both vendors normalize into the same
+# vendor-neutral IR. Same-vendor requests are an identity passthrough.
+CISCO_ALIASES = {"cisco", "ios"}
+JUNIPER_ALIASES = {"juniper", "junos"}
+SUPPORTED_SOURCES = CISCO_ALIASES | JUNIPER_ALIASES
+CANONICAL_TARGETS = {"junos", "juniper", "cisco", "ios"}
+VENDOR_PAIRS = [
+    VendorPair(source="cisco", target="junos"),
+    VendorPair(source="juniper", target="cisco"),
+    VendorPair(source="cisco", target="cisco"),
+    VendorPair(source="juniper", target="juniper"),
+]
+
+
+def _canonical(vendor: str) -> str:
+    """Collapse vendor aliases so 'junos'/'juniper' and 'cisco'/'ios' compare equal."""
+    value = (vendor or "").strip().lower()
+    if value in JUNIPER_ALIASES:
+        return "junos"
+    if value in CISCO_ALIASES:
+        return "cisco"
+    return value
 
 
 def _validate_vendors(source_vendor: str, target_vendor: str):
@@ -68,16 +96,26 @@ def _handoff_to_ai_engine(config_text: str, target_vendor: str) -> dict:
         filename = f"{target_vendor}_translated.txt"
         files = {"config": (filename, config_text.encode("utf-8"))}
         data = {"vendor": target_vendor}
-        resp = requests.post(url, files=files, data=data, timeout=180)
+        resp = requests.post(url, files=files, data=data, timeout=300)
         if resp.ok:
             payload = resp.json()
+            # /api/uploads/ returns {"count": n, "results": [...]}, with one
+            # entry per uploaded file. Unwrap the first result so callers get
+            # the same flat shape regardless of which endpoint produced it.
+            results = payload.get("results")
+            if isinstance(results, list) and results:
+                payload = results[0]
+            elif isinstance(results, list):
+                return {"success": False,
+                        "error": "Django accepted the upload but returned no results."}
             return {
                 "success": True,
                 "upload_id": payload.get("id"),
                 "status": payload.get("status"),
                 "compliance_report": payload.get("compliance_report"),
                 "baseline_json": payload.get("baseline_json"),
-                "errors": payload.get("errors"),
+                "errors": payload.get("errors") or payload.get("error"),
+                "normalization_review": payload.get("normalization_review") or [],
             }
         return {"success": False, "http_status": resp.status_code,
                 "error": resp.text[:500]}
@@ -88,27 +126,34 @@ def _handoff_to_ai_engine(config_text: str, target_vendor: str) -> dict:
 def _run_translation(config_text: str, source_vendor: str, target_vendor: str , source_stem: str = "sample_config") -> dict:
     from translator import translate_config
 
-    passthrough = target_vendor == "cisco"
+    source_family = _canonical(source_vendor)
+    target_family = _canonical(target_vendor)
+
+    # Only a same-vendor request is a passthrough; cisco -> junos and
+    # junos -> cisco both run the real deterministic pipeline.
+    passthrough = source_family == target_family
 
     # ---- translate (or pass through) ---------------------------------------
     if passthrough:
-        # Deterministic IR only (no LLM, no RAG) so the baseline copy still maps
-        # cleanly; the emitted config stays the unmodified source.
+        # Deterministic parse only (no LLM, no RAG) so the baseline copy still
+        # maps cleanly; the emitted config stays the unmodified source.
         try:
-            ir_result = translate_config(
-                config_text, use_llm=False, with_rag=False, persist=False, search_fn=None)
-            ir = ir_result["ir"]
+            if source_family == "junos":
+                ir = juniper_ir.normalize(juniper_parser.parse(config_text))
+            else:
+                ir = cisco_ir.normalize(cisco_parser.parse(config_text))
+            ir_result = {"ir": ir.model_dump_safe()}
         except Exception:
-            ir = {}
+            ir_result = {"ir": {}}
         result = {
             "run_id": None,
             "status": "done",
             "overall_confidence": 1.0,
             "confidence_by_category": {},
             "set_commands": [l for l in config_text.splitlines() if l.strip()],
-            "ir": ir,
+            "ir": ir_result["ir"],
             "explanations": [],
-            "warnings": ["Target vendor is cisco - config passed through without conversion."],
+            "warnings": [f"Source and target are both {source_family} - config passed through without conversion."],
             "unresolved": [],
             "rounds": 0,
         }
@@ -120,6 +165,8 @@ def _run_translation(config_text: str, source_vendor: str, target_vendor: str , 
             with_rag=True,
             persist=True,
             search_fn=None,
+            source_vendor=source_vendor,
+            target_vendor=target_vendor,
         )
         handoff_config = "\n".join(result.get("set_commands") or [])
 
@@ -149,7 +196,13 @@ def _run_translation(config_text: str, source_vendor: str, target_vendor: str , 
     document["txt_path"] = str(txt_path)
 
     # ---- hand the translated/normalized config to ai_engine ----------------
-    document["ai_engine_handoff"] = _handoff_to_ai_engine(handoff_config, target_vendor)
+    handoff = _handoff_to_ai_engine(handoff_config, target_family)
+    document["ai_engine_handoff"] = handoff
+    # Surface the compliance summary at the top level so a caller does not have
+    # to reach into ai_engine_handoff to show pass/fail counts.
+    document["summary"] = (handoff.get("compliance_report") or {}).get("summary")
+    document["passthrough"] = passthrough
+
     ai_path.write_text(json.dumps(document, indent=2, ensure_ascii=False, default=str),
                        encoding="utf-8")
     return document

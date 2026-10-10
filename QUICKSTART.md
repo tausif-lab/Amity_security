@@ -27,8 +27,11 @@ start.bat
 
 That's it! The script will:
 1. Activate virtual environment
-2. Start Django backend
-3. Open frontend in your browser
+2. Apply database migrations
+3. Check/start Ollama
+4. Start Django backend (:8000)
+5. Start the FastAPI translator (:8001)
+6. Open frontend in your browser
 
 ## Manual Setup (5 minutes)
 
@@ -69,22 +72,24 @@ cd ..
 ### Step 4: Start Backend
 
 ```bash
-python manage.py runserver
+# Terminal 1 — compliance API (:8000)
+python manage.py runserver 127.0.0.1:8000
+
+# Terminal 2 — translator/RAG API (:8001), required for translation
+cd rag
+python main.py
+cd ..
 ```
 
-Keep this terminal open!
+Keep both terminals open!
 
 ### Step 5: Open Frontend
 
-**Option A:** Direct file
 ```bash
 start frontend\index.html
 ```
 
-**Option B:** Test backend first
-```bash
-start frontend\test.html
-```
+**Diagnostics page:** `frontend\test.html`
 
 ## Test the System
 
@@ -95,6 +100,18 @@ start frontend\test.html
 3. Click "Choose file" → select `sample_config.txt`
 4. Click "Analyze Configuration"
 5. View results and download PDF
+
+### Translate Both Directions
+
+1. Open `frontend/index.html`
+2. **Source = Cisco IOS, Target = Junos** → choose `sample_config.txt`
+   → *Translate & Analyze*
+3. **Source = Juniper Junos, Target = Cisco IOS** → choose
+   `sample_config_juniper.txt` → *Translate & Analyze*
+
+Both directions run the real pipeline; selecting the same vendor on both sides
+is an explicit passthrough. Credentials are never translated automatically and
+are shown as `# UNMAPPED:` markers for a human to recreate.
 
 ### API Test
 
@@ -169,6 +186,9 @@ pip install -r requirements.txt
 |---------|-----|
 | Frontend | `file:///path/to/frontend/index.html` |
 | Backend API | `http://127.0.0.1:8000` |
+| Backend health | `http://127.0.0.1:8000/api/health/` |
+| Translator API | `http://127.0.0.1:8001` |
+| Translator health | `http://127.0.0.1:8001/api/health` |
 | Django Admin | `http://127.0.0.1:8000/admin` |
 | Ollama | `http://localhost:11434` |
 | PostgreSQL | `localhost:5432` |
@@ -237,6 +257,11 @@ F12 → Console tab
 
 ### Run Tests
 
+**All suites (Django + bidirectional translator):**
+```bash
+python run_tests.py
+```
+
 **Backend Connection:**
 ```bash
 start frontend\test.html
@@ -245,6 +270,11 @@ start frontend\test.html
 **Django Tests:**
 ```bash
 python manage.py test
+```
+
+**Health check of running services:**
+```bash
+python workflow.py --check
 ```
 
 ### View Database

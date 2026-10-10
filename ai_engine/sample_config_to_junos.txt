@@ -1,18 +1,14 @@
-set system services ssh
+set system services ssh protocol-version v2
 set system syslog file messages any any
-set system login user admin secret type7 0102030405060709
-set system login message #Unauthorized access prohibited#
+set system login message "Unauthorized access prohibited"
+set system services web-management http
 set protocols lldp interface all
 set system host-name Core-SW-01
 set system ntp server 10.0.0.1
 set snmp community public authorization read-only
 set system syslog host 10.0.0.5
-set system services ssh protocol-version v2
-# UNMAPPED: line vty 0 4
-#   reason: No verified Junos equivalent for 'line vty 0 4'. Manual review required.
-# UNMAPPED: enable secret type7 0102030405060708
-#   reason: No verified Junos equivalent for 'enable secret type7 0102030405060708'. Manual review required.
-# UNMAPPED: ip http server
-#   reason: No verified Junos equivalent for 'ip http server'. Manual review required.
-# UNMAPPED: crypto isakmp policy 10
-#   reason: No verified Junos equivalent for 'crypto isakmp policy 10'. Manual review required.
+set security ike policy 10
+# UNMAPPED: enable secret <redacted>
+#   reason: Credentials cannot be translated automatically. Re-create the account on the target device with its own hashing (Cisco: `username <n> secret <hash>`; Junos: `set system login user <n> authentication encrypted-password`).
+# UNMAPPED: username admin secret <redacted>
+#   reason: Credentials cannot be translated automatically. Re-create the account on the target device with its own hashing (Cisco: `username <n> secret <hash>`; Junos: `set system login user <n> authentication encrypted-password`).

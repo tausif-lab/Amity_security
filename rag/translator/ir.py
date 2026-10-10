@@ -51,6 +51,11 @@ class GlobalConfigIR(BaseModel):
     ip_http_server: bool = False
     ip_dns_servers: List[str] = Field(default_factory=list)
     raw_commands: List[str] = Field(default_factory=list)
+    # Vendor-neutral security facts. `password_hashes` keeps the raw literals so
+    # the generator can re-emit them; `password_encryption` is the strongest
+    # algorithm actually observed (None when the config states no hash).
+    password_encryption: Optional[str] = None
+    password_hashes: List[str] = Field(default_factory=list)
 
 
 class InterfaceIR(BaseModel):
@@ -78,6 +83,9 @@ class OspfIR(BaseModel):
     networks: List[Dict[str, str]] = Field(default_factory=list)
     router_id: Optional[str] = None
     passive_interfaces: List[str] = Field(default_factory=list)
+    # Junos binds OSPF per interface (`area A interface I`) instead of using a
+    # wildcard network statement, so that form is kept alongside `networks`.
+    area_interfaces: List[Dict[str, str]] = Field(default_factory=list)
 
 
 class BgpIR(BaseModel):
