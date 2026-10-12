@@ -7,8 +7,11 @@ set system host-name Core-SW-01
 set system ntp server 10.0.0.1
 set snmp community public authorization read-only
 set system syslog host 10.0.0.5
-set security ike policy 10
+# UNMAPPED: line vty 0 4
+#   reason: No verified Junos equivalent for 'line vty 0 4'. Manual review required.
 # UNMAPPED: enable secret <redacted>
 #   reason: Credentials cannot be translated automatically. Re-create the account on the target device with its own hashing (Cisco: `username <n> secret <hash>`; Junos: `set system login user <n> authentication encrypted-password`).
 # UNMAPPED: username admin secret <redacted>
 #   reason: Credentials cannot be translated automatically. Re-create the account on the target device with its own hashing (Cisco: `username <n> secret <hash>`; Junos: `set system login user <n> authentication encrypted-password`).
+# UNMAPPED: crypto isakmp policy 10
+#   reason: No verified Junos equivalent for 'crypto isakmp policy 10'. Manual review required.

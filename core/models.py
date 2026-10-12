@@ -2,6 +2,44 @@ import uuid
 from django.db import models
 from django.contrib.auth.models import User
 from pgvector.django import VectorField
+from django.db.models import Q
+
+class Tenant(models.Model):
+    name = models.CharField(max_length=150, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name
+
+
+class Device(models.Model):
+    DEVICE_TYPES = [
+        ("router", "Router"),
+        ("switch", "Switch"),
+        ("firewall", "Firewall"),
+        ("load_balancer", "Load Balancer"),
+        ("wireless_controller", "Wireless Controller"),
+        ("other", "Other"),
+    ]
+
+    device_id = models.CharField(max_length=20, unique=True, null=True, blank=True, editable=False)
+    tenant = models.ForeignKey(Tenant, on_delete=models.PROTECT, related_name="devices")
+    site = models.CharField(max_length=150, blank=True)
+    vendor = models.CharField(max_length=50)
+    device_type = models.CharField(max_length=30, choices=DEVICE_TYPES, default="other")   # NEW
+    hostname = models.CharField(max_length=255)
+    serial_number = models.CharField(max_length=100, blank=True)
+    registered_by = models.CharField(max_length=150)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if not self.device_id:
+            # Derived from the database primary key, so two simultaneous
+            # registrations can never receive the same ID.
+            self.device_id = f"DEV-{self.pk:04d}"
+            super().save(update_fields=["device_id"])
+
 
 
 class DeviceUpload(models.Model):
@@ -19,6 +57,9 @@ class DeviceUpload(models.Model):
     uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     original_config_text = models.TextField(null=True, blank=True)
+    device = models.ForeignKey("Device", on_delete=models.SET_NULL, null=True, blank=True,
+                               related_name="uploads")
+    remediation_json = models.JSONField(null=True, blank=True)
 
     baseline_json = models.JSONField(null=True, blank=True)
     compliance_report = models.JSONField(null=True, blank=True)
@@ -104,3 +145,65 @@ class ComplianceSnapshot(models.Model):
     class Meta:
         ordering = ["-created_at"]
         indexes = [models.Index(fields=["hostname", "vendor", "-created_at"])]
+
+
+class ConfigSnapshot(models.Model):
+    """Read-only, timestamped copy of one device's config at the moment it was pushed."""
+    device = models.ForeignKey(Device, on_delete=models.PROTECT, related_name="snapshots")
+    upload = models.OneToOneField(DeviceUpload, on_delete=models.SET_NULL, null=True, blank=True,
+                                  related_name="config_snapshot")
+    raw_config = models.TextField()
+    normalized_config = models.JSONField()
+    config_hash = models.CharField(max_length=64, db_index=True)    # SHA-256 of raw_config
+    uploaded_by = models.CharField(max_length=150)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    is_latest = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["-uploaded_at", "-id"]
+        constraints = [
+            # The database itself guarantees one "latest" snapshot per device.
+            models.UniqueConstraint(fields=["device"], condition=Q(is_latest=True),
+                                    name="one_latest_snapshot_per_device"),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.pk is not None:
+            raise ValueError("ConfigSnapshot is read-only once created.")
+        super().save(*args, **kwargs)
+
+
+class ComplianceResult(models.Model):
+    snapshot = models.ForeignKey(ConfigSnapshot, on_delete=models.CASCADE, related_name="results")
+    framework = models.CharField(max_length=20)
+    score = models.FloatField()
+    pass_count = models.PositiveIntegerField()
+    fail_count = models.PositiveIntegerField()
+    unknown_count = models.PositiveIntegerField(default=0)
+    findings_json = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class ChangeEvent(models.Model):
+    """Created now, filled in the next step (the difflib comparison)."""
+    CHANGE_TYPES = [("added", "Added"), ("removed", "Removed")]
+    snapshot = models.ForeignKey(ConfigSnapshot, on_delete=models.CASCADE, related_name="changes")
+    previous_snapshot = models.ForeignKey(ConfigSnapshot, on_delete=models.CASCADE, related_name="+")
+    change_type = models.CharField(max_length=10, choices=CHANGE_TYPES)
+    line_number = models.PositiveIntegerField()
+    line_text = models.TextField()
+    parent_block = models.CharField(max_length=255, blank=True)
+
+
+class QueryLog(models.Model):
+    """Audit trail: every question asked and the filter the LLM produced for it."""
+    user_email = models.CharField(max_length=255, blank=True)
+    question = models.TextField()
+    generated_filter = models.JSONField(null=True, blank=True)
+    status = models.CharField(max_length=20)             # ok | unsupported | error
+    result_count = models.PositiveIntegerField(default=0)
+    executed_at = models.DateTimeField(auto_now_add=True)
+ 
+    class Meta:
+        ordering = ["-executed_at"]
+ 

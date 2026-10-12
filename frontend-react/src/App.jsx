@@ -5,11 +5,12 @@ import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
 import ProtectedRoute from "./components/ProtectedRoute";
 import RoleRedirect from "./components/RoleRedirect";
-
+import Home from "./pages/Home";
+import AnalystDashboard from "./pages/Analystdashboard";
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<Hero />} />
+      <Route path="/" element={<Home />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/dashboard" element={<RoleRedirect />} />
@@ -22,13 +23,13 @@ export default function App() {
         }
       />
       <Route
-        path="/analyst"
-        element={
-          <ProtectedRoute roles={["analyst"]}>
-            <Dashboard title="Analyst workspace" />
-          </ProtectedRoute>
-        }
-      />
+  path="/analyst"
+  element={
+    <ProtectedRoute roles={["analyst"]}>
+      <AnalystDashboard />
+    </ProtectedRoute>
+  }
+/>
     </Routes>
   );
 } 

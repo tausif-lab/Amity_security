@@ -1,7 +1,11 @@
 from django.urls import path
 from . import views
-
+from . import device_views
+from . import snapshot_views
+from . import analysis_views
 urlpatterns = [
+    path("devices/", device_views.devices, name="devices"),
+    path("devices/<str:device_id>/", device_views.device_detail, name="device_detail"),
     path("health/", views.health, name="health"),
     path("me/", views.me, name="me"),
     path("frameworks/", views.list_frameworks, name="list_frameworks"),
@@ -20,4 +24,13 @@ urlpatterns = [
     path("uploads/report/pdf/", views.download_combined_report_pdf, name="download_combined_report_pdf"),
     path("uploads/<uuid:upload_id>/remediation/propose/<str:rule_id>/", views.propose_single_remediation, name="propose_single_remediation"),
     path("uploads/<uuid:upload_id>/corrected-config/", views.download_corrected_config, name="download_corrected_config"),
+    path("uploads/<uuid:upload_id>/push/", snapshot_views.push_upload, name="push_upload"),
+    path("devices/<str:device_id>/snapshots/", snapshot_views.device_snapshots, name="device_snapshots"),
+    path("snapshots/<int:snapshot_id>/", snapshot_views.snapshot_detail, name="snapshot_detail"),
+    path("analysis/overview/", analysis_views.analysis_overview, name="analysis_overview"),
+    path("devices/<str:device_id>/analysis/", analysis_views.device_analysis, name="device_analysis"),
+    path("snapshots/<int:snapshot_id>/changes/", analysis_views.snapshot_changes, name="snapshot_changes"),
+    
+    path("analysis/query/", analysis_views.ask_devices, name="ask_devices"),
+    path("analysis/query/fields/", analysis_views.ask_devices_fields, name="ask_devices_fields"),
 ]

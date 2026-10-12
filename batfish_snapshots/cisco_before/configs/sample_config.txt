@@ -1,0 +1,30 @@
+cat > batfish_snapshots/cisco_before/configs/Core-SW-01.cfg << 'EOF'
+!
+hostname Core-SW-01
+!
+enable secret 5 $1$mERr$hx5rVt7rPNoS4wqbXKX7m0
+username admin secret 5 $1$mERr$hx5rVt7rPNoS4wqbXKX7m0
+!
+ip ssh version 2
+no ip http server
+!
+line vty 0 4
+ transport input ssh
+!
+logging host 10.0.0.5
+logging buffered 4096
+!
+banner motd #Unauthorized access prohibited#
+!
+snmp-server community public ro
+!
+no cdp run
+!
+ntp server 10.0.0.1
+!
+interface GigabitEthernet0/0
+ ip address 10.0.0.2 255.255.255.0
+ no shutdown
+!
+end
+EOF

@@ -1,5 +1,14 @@
 from rest_framework import serializers
 from .models import DeviceUpload, RemediationLog
+from .models import Device
+
+class DeviceSerializer(serializers.ModelSerializer):
+    tenant = serializers.CharField(source="tenant.name", read_only=True)
+
+    class Meta:
+        model = Device
+        fields = ["device_id", "tenant", "site", "vendor", "device_type" , "hostname",
+                  "serial_number", "registered_by", "created_at"]
 
 
 class DeviceUploadSerializer(serializers.ModelSerializer):

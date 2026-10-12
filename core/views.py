@@ -25,7 +25,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from compliance.services.remediation import generate_remediation_commands, execute_remediation, build_corrected_config
 from compliance.services.drift import build_drift_report
 
-from .models import DeviceUpload, RemediationLog, ComplianceSnapshot
+from .models import DeviceUpload, RemediationLog, ComplianceSnapshot , NormalizationMemory 
 from .serializers import DeviceUploadSerializer
 from ai_engine.services.ollama_client import (
     normalize_config, normalize_config_checked, reinforcement_prompt,
@@ -43,7 +43,8 @@ from .supabase_auth import SupabaseAuthentication, role_required
 from ai_engine.services.fact_extractor import (
     apply_overrides, sanitize, drop_unsupported_interfaces, deterministic_paths,
 )
-
+from xml.sax.saxutils import escape
+from .models import DeviceUpload, RemediationLog, ComplianceSnapshot, Device
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -104,10 +105,247 @@ def _take_snapshot(upload, baseline, summary):
         return None
 
 
+# ---- "Ask a human once" helpers ---------------------------------------------
+_DECISION_RANK = {"approved": 3, "rejected": 2, "pending": 1}
+
+
+def _norm_cmd(text):
+    return " ".join(str(text).lower().split())
+
+
+def _decision_index(vendor):
+    """normalized command -> its NormalizationMemory. A human decision outranks a pending one."""
+    index = {}
+    for m in NormalizationMemory.objects.filter(vendor=vendor).order_by("id"):
+        key = _norm_cmd(m.command)
+        if key not in index or _DECISION_RANK.get(m.status, 0) > _DECISION_RANK.get(index[key].status, 0):
+            index[key] = m
+    return index
+
+
+def _snap_to_config_line(command, config_lines):
+    """The model often paraphrases. Remember the literal config line instead, so the same
+    line in a later upload finds this decision."""
+    target = _norm_cmd(command)
+    for line in config_lines:
+        if _norm_cmd(line) == target:
+            return line
+    for line in config_lines:
+        n = _norm_cmd(line)
+        if len(target) >= 6 and len(n) >= 6 and (target in n or n in target):
+            return line
+    return command
+
+
+def _ask_once(index, vendor, command, confidence, meaning):
+    """A review item for `command`, or None if a human already decided it.
+    A still-pending record is reused instead of creating a duplicate."""
+    key = _norm_cmd(command)
+    existing = index.get(key)
+    if existing is not None and existing.status in ("approved", "rejected"):
+        return None
+    if existing is not None:
+        memory_id = existing.id
+    else:
+        memory_id = store_pending(command, vendor, confidence, meaning)
+        index[key] = NormalizationMemory(id=memory_id, command=command, vendor=vendor, status="pending")
+    return {"memory_id": memory_id, "command": command,
+            "proposed_meaning": meaning, "confidence": confidence}
+
+
+def _set_dotted(data, path, value):
+    parts = path.split(".")
+    cur = data
+    for key in parts[:-1]:
+        if not isinstance(cur.get(key), dict):
+            cur[key] = {}
+        cur = cur[key]
+    cur[parts[-1]] = value
+
+
+def _apply_field_decisions(data, vendor):
+    """Approved answers about a FIELD (dual-call disagreements). These are keyed by a field
+    path, not a config line, so the config-line lookup never finds them. Apply them directly."""
+    for m in NormalizationMemory.objects.filter(vendor=vendor, status="approved"):
+        path = (m.normalized_path or "").strip()
+        if path and _norm_cmd(m.command) == _norm_cmd(path):
+            _set_dotted(data, path, m.normalized_value)
+    return data
+
 # def _process_single_config(config_text, vendor, instructions, schema, rules):
+# def _normalize_single_config(config_text, vendor, instructions, schema):
+#     """Runs one config through normalize -> validate -> comply. Returns a dict result."""
+#     #upload = DeviceUpload.objects.create(vendor=vendor, status="processing")
+#     upload = DeviceUpload.objects.create(vendor=vendor, status="processing", original_config_text=config_text)
+
+#     memories = lookup_config_memories(config_text, vendor)
+
+#     # Layer 1: exact-match cache in front of the LLM. The key covers vendor,
+#     # model, schema and prompt, so editing any of them retires the cache
+#     # automatically. On a hit nothing is inferred at all.
+#     cache_key = compute_key(vendor, instructions.get("model", ""), schema,
+#                             instructions.get("system_prompt", ""), config_text)
+#     cached = cache_get(cache_key)
+#     dual_status = "skipped"
+#     disagreements = []       # a cache hit performs no call, so it can disagree about nothing
+
+#     if isinstance(cached, dict) and cached:
+#         normalized_data = json.loads(json.dumps(cached))    # defensive copy
+#         cache_status = "hit"
+#     else:
+#         cache_status = "miss"
+#         try:
+#             normalized_data, dual_status, disagreements = normalize_config_checked(
+#                 config_text, instructions, schema, prompt_context(memories))
+#         except Exception as e:
+#             upload.status = "failed"
+#             upload.save()
+#             return {"id": str(upload.id), "vendor": vendor, "status": "failed", "error": str(e)}
+#         cache_put(cache_key, vendor, instructions.get("model", ""), normalized_data)
+
+#     upload.cache_status = cache_status
+#     upload.dual_call_status = dual_status
+#     upload.save()
+
+#     if not isinstance(normalized_data, dict):
+#         upload.status = "failed"
+#         upload.save()
+#         return {"id": str(upload.id), "vendor": vendor, "status": "failed",
+#                 "error": f"Normalizer returned {type(normalized_data).__name__}, expected a JSON object."}
+
+#     assessments = normalized_data.pop("_normalization_assessment", [])
+#     is_single_review_demo = "HITL_SINGLE_REVIEW_DEMO" in config_text
+#     has_demo_approval = any(
+#         item["status"] == "approved" and item["input_command"].startswith("demo-policy ")
+#         for item in memories
+#     )
+#     if is_single_review_demo:
+#         # Fixed known-good fixture values keep the demo focused on one human
+#         # mapping, rather than asking a reviewer to repeat eight obvious facts.
+#         management = dict(normalized_data.get("management") or {})
+#         management.update({"telnet_enabled": False, "http_enabled": False,
+#                            "snmp": {"community_strings": []}})
+#         if not has_demo_approval:
+#             management.pop("ssh_version", None)
+#         normalized_data["management"] = management
+#         normalized_data["logging"] = {"remote_servers": ["192.0.2.50"]}
+#         normalized_data["ntp"] = {"servers": ["192.0.2.123"]}
+#         normalized_data["authentication"] = {"aaa_methods": ["radius"],
+#                                                 "password_encryption": "scrypt"}
+#     normalized_data = apply_approved_mappings(normalized_data, memories)
+#     review_items = []
+#     for assessment in assessments if isinstance(assessments, list) else []:
+#         if not isinstance(assessment, dict):
+#             continue
+#         try:
+#             confidence = float(assessment.get("confidence", 0))
+#         except (TypeError, ValueError):
+#             confidence = 0.0
+#         if confidence < LOW_CONFIDENCE_THRESHOLD and assessment.get("command"):
+#             memory_id = store_pending(
+#                 str(assessment["command"]), vendor, confidence,
+#                 str(assessment.get("proposed_meaning", "")),
+#             )
+#             review_items.append({"memory_id": memory_id, "command": assessment["command"],
+#                                  "proposed_meaning": assessment.get("proposed_meaning", ""),
+#                                  "confidence": confidence})
+
+#     # The bundled demonstration config intentionally uses non-vendor `demo-policy`
+#     # commands. Always send those through human review on their first encounter so
+#     # the before/after embedding workflow is reproducible regardless of LLM wording.
+#     assessed_commands = {str(item.get("command", "")).strip() for item in review_items}
+#     approved_commands = {item["input_command"] for item in memories if item["status"] == "approved"}
+#     for command in config_commands(config_text):
+#         if (command.startswith("demo-policy ") and command not in assessed_commands
+#                 and command not in approved_commands):
+#             memory_id = store_pending(command, vendor, 0.0, "Demo policy command requires human mapping.")
+#             review_items.append({"memory_id": memory_id, "command": command,
+#                                  "proposed_meaning": "Human mapping required for this demo policy.",
+#                                  "confidence": 0.0})
+
+#     is_valid, errors = validate_normalized_json(normalized_data, schema)
+#     retry_count = 0
+#     while not is_valid and retry_count < 2:
+#         try:
+#             candidate = reinforcement_prompt(config_text, errors, instructions, schema)
+#         except Exception:
+#             break
+#         # A corrective retry can come back worse than the first answer (small
+#         # models sometimes echo the schema back verbatim). Keep whichever
+#         # candidate actually satisfies the schema, and never let a failed
+#         # retry overwrite a valid normalization.
+#         if not isinstance(candidate, dict):
+#             break
+#         candidate_valid, candidate_errors = validate_normalized_json(candidate, schema)
+#         if candidate_valid:
+#             normalized_data = candidate
+#             is_valid, errors = True, []
+#             break
+#         if not is_valid and len(candidate_errors) < len(errors):
+#             normalized_data, errors = candidate, candidate_errors
+#         retry_count += 1
+
+#     # A corrective retry may also return audit metadata; it must never leak into
+#     # the normalized baseline consumed by the deterministic compliance engine.
+#     normalized_data.pop("_normalization_assessment", None)
+#     normalized_data = sanitize(normalized_data, schema, config_text)
+#     normalized_data = drop_unsupported_interfaces(normalized_data, config_text)
+#     # `vendor` is known from the upload form, never from the model, so apply it
+#     # before the final validation pass: without it every upload would be sent
+#     # to review purely because the model omitted a field we already know.
+#     normalized_data = apply_overrides(normalized_data, config_text, vendor)
+
+#     # Dual-call check: the architecture routes disagreement to human review, but
+#     # only for fields that nothing upstream can settle. A field the deterministic
+#     # layer proves from the config text is already correct by the time it lands,
+#     # so escalating it would only manufacture review noise. Everything the model
+#     # disagreed about is still recorded on the upload for the audit trail.
+#     settled = deterministic_paths(config_text, vendor)
+#     unresolved_disagreements = [d for d in disagreements
+#                                 if tuple(d["field"].split(".")) not in settled]
+#     for item in unresolved_disagreements:
+#         review_items.append({
+#             "memory_id": store_pending(
+#                 item["field"], vendor, 0.3,
+#                 f"Dual-call disagreement: {item['call_a']!r} vs {item['call_b']!r}",
+#             ),
+#             "command": item["field"],
+#             "proposed_meaning": f"Dual-call disagreement: {item['call_a']!r} vs {item['call_b']!r}",
+#             "confidence": 0.3,
+#         })
+
+#     # Validate the fully processed baseline, not the raw model output: the
+#     # deterministic overrides above legitimately add the required `vendor`.
+#     is_valid, errors = validate_normalized_json(normalized_data, schema)
+
+#     if not is_valid:
+#         upload.status = "review"
+#         upload.baseline_json = normalized_data
+#         upload.save()
+#         return {"id": str(upload.id), "vendor": vendor, "status": "review", "errors": errors,
+#                 "partial_baseline": normalized_data, "normalization_review": review_items}
+
+#     state = "review" if review_items else "normalized"      # <- must come BEFORE it is used
+#     upload.baseline_json = normalized_data
+#     upload.status = state
+#     upload.save()
+#     return {
+#         "id": str(upload.id), "vendor": vendor, "status": state,
+#         "baseline_json": normalized_data,
+#         "cache_status": cache_status,
+#         "dual_call_status": dual_status,
+#         "dual_call_disagreements": disagreements,
+#         "normalization_review": review_items,
+#         "memory_matches": [{"command": m["input_command"], "memory_id": m["id"],
+#                             "similarity": m["similarity"], "status": m["status"]}
+#                            for m in memories],
+#     }
+
+
+
+
 def _normalize_single_config(config_text, vendor, instructions, schema):
-    """Runs one config through normalize -> validate -> comply. Returns a dict result."""
-    #upload = DeviceUpload.objects.create(vendor=vendor, status="processing")
+    """Normalize one config. Returns a dict result. A human is asked ONCE per command."""
     upload = DeviceUpload.objects.create(vendor=vendor, status="processing", original_config_text=config_text)
 
     memories = lookup_config_memories(config_text, vendor)
@@ -165,35 +403,41 @@ def _normalize_single_config(config_text, vendor, instructions, schema):
         normalized_data["authentication"] = {"aaa_methods": ["radius"],
                                                 "password_encryption": "scrypt"}
     normalized_data = apply_approved_mappings(normalized_data, memories)
+
+    # ---- Ask a human ONCE per command ---------------------------------------
+    # A command that already has an approved or rejected record is never raised
+    # again. One that is still pending is reused instead of duplicated.
+    decisions = _decision_index(vendor)
+    lines = list(config_commands(config_text))
     review_items = []
+    raised = set()
+
     for assessment in assessments if isinstance(assessments, list) else []:
-        if not isinstance(assessment, dict):
+        if not isinstance(assessment, dict) or not assessment.get("command"):
             continue
         try:
             confidence = float(assessment.get("confidence", 0))
         except (TypeError, ValueError):
             confidence = 0.0
-        if confidence < LOW_CONFIDENCE_THRESHOLD and assessment.get("command"):
-            memory_id = store_pending(
-                str(assessment["command"]), vendor, confidence,
-                str(assessment.get("proposed_meaning", "")),
-            )
-            review_items.append({"memory_id": memory_id, "command": assessment["command"],
-                                 "proposed_meaning": assessment.get("proposed_meaning", ""),
-                                 "confidence": confidence})
+        if confidence >= LOW_CONFIDENCE_THRESHOLD:
+            continue
+        command = _snap_to_config_line(str(assessment["command"]), lines)
+        if _norm_cmd(command) in raised:
+            continue
+        item = _ask_once(decisions, vendor, command, confidence,
+                         str(assessment.get("proposed_meaning", "")))
+        if item:
+            review_items.append(item)
+            raised.add(_norm_cmd(command))
 
-    # The bundled demonstration config intentionally uses non-vendor `demo-policy`
-    # commands. Always send those through human review on their first encounter so
-    # the before/after embedding workflow is reproducible regardless of LLM wording.
-    assessed_commands = {str(item.get("command", "")).strip() for item in review_items}
-    approved_commands = {item["input_command"] for item in memories if item["status"] == "approved"}
-    for command in config_commands(config_text):
-        if (command.startswith("demo-policy ") and command not in assessed_commands
-                and command not in approved_commands):
-            memory_id = store_pending(command, vendor, 0.0, "Demo policy command requires human mapping.")
-            review_items.append({"memory_id": memory_id, "command": command,
-                                 "proposed_meaning": "Human mapping required for this demo policy.",
-                                 "confidence": 0.0})
+    # Demo policy commands: same ask-once rule.
+    for command in lines:
+        if command.startswith("demo-policy ") and _norm_cmd(command) not in raised:
+            item = _ask_once(decisions, vendor, command, 0.0,
+                             "Human mapping required for this demo policy.")
+            if item:
+                review_items.append(item)
+                raised.add(_norm_cmd(command))
 
     is_valid, errors = validate_normalized_json(normalized_data, schema)
     retry_count = 0
@@ -226,25 +470,20 @@ def _normalize_single_config(config_text, vendor, instructions, schema):
     # before the final validation pass: without it every upload would be sent
     # to review purely because the model omitted a field we already know.
     normalized_data = apply_overrides(normalized_data, config_text, vendor)
+    # Answers a human already gave about a whole FIELD (dual-call disagreements).
+    normalized_data = _apply_field_decisions(normalized_data, vendor)
 
-    # Dual-call check: the architecture routes disagreement to human review, but
-    # only for fields that nothing upstream can settle. A field the deterministic
-    # layer proves from the config text is already correct by the time it lands,
-    # so escalating it would only manufacture review noise. Everything the model
-    # disagreed about is still recorded on the upload for the audit trail.
+    # Dual-call check: disagreement goes to human review, but only for fields that
+    # nothing upstream can settle, and only if no human has answered it before.
     settled = deterministic_paths(config_text, vendor)
-    unresolved_disagreements = [d for d in disagreements
-                                if tuple(d["field"].split(".")) not in settled]
-    for item in unresolved_disagreements:
-        review_items.append({
-            "memory_id": store_pending(
-                item["field"], vendor, 0.3,
-                f"Dual-call disagreement: {item['call_a']!r} vs {item['call_b']!r}",
-            ),
-            "command": item["field"],
-            "proposed_meaning": f"Dual-call disagreement: {item['call_a']!r} vs {item['call_b']!r}",
-            "confidence": 0.3,
-        })
+    for d in disagreements:
+        if tuple(d["field"].split(".")) in settled or _norm_cmd(d["field"]) in raised:
+            continue
+        item = _ask_once(decisions, vendor, d["field"], 0.3,
+                         f"Dual-call disagreement: {d['call_a']!r} vs {d['call_b']!r}")
+        if item:
+            review_items.append(item)
+            raised.add(_norm_cmd(d["field"]))
 
     # Validate the fully processed baseline, not the raw model output: the
     # deterministic overrides above legitimately add the required `vendor`.
@@ -257,7 +496,7 @@ def _normalize_single_config(config_text, vendor, instructions, schema):
         return {"id": str(upload.id), "vendor": vendor, "status": "review", "errors": errors,
                 "partial_baseline": normalized_data, "normalization_review": review_items}
 
-    state = "review" if review_items else "normalized"      # <- must come BEFORE it is used
+    state = "review" if review_items else "normalized"
     upload.baseline_json = normalized_data
     upload.status = state
     upload.save()
@@ -369,6 +608,7 @@ def upload_config(request):
     """
     files = request.FILES.getlist("config")
     vendors = request.data.getlist("vendor")
+    device_ids = request.data.getlist("device_id")   # one per file, same order as the files
     framework = _resolve_framework(request.data.getlist("framework")[0] if request.data.getlist("framework") else None)
 
     if not files:
@@ -380,22 +620,33 @@ def upload_config(request):
     results = []
     for i, file_obj in enumerate(files):
         vendor = vendors[i] if i < len(vendors) else "unknown"
-        raw_text = file_obj.read().decode("utf-8", errors="ignore")
 
+        # A registered device is the source of truth for the vendor.
+        device = None
+        device_id = (device_ids[i] if i < len(device_ids) else "").strip()
+        if device_id:
+            device = Device.objects.filter(device_id=device_id).first()
+            if device is None:
+                results.append({"status": "failed", "error": f"Device '{device_id}' is not registered."})
+                continue
+            vendor = device.vendor
+
+        raw_text = file_obj.read().decode("utf-8", errors="ignore")
         if len(raw_text.strip()) < 10:
             results.append({"vendor": vendor, "status": "failed",
                             "error": "Config file empty or too short."})
             continue
 
-        # Unified ingestion: any supported format becomes CLI text. The raw
-        # upload is still stored, so the original is never lost.
         config_text, source_format = ingest(raw_text, vendor)
-
         rules = _load_rules(framework, vendor)
         try:
             outcome = _process_single_config(config_text, vendor, instructions, schema,
                                              rules, framework)
             outcome["source_format"] = source_format
+            if device and outcome.get("id"):
+                DeviceUpload.objects.filter(id=outcome["id"]).update(device=device)
+                outcome["device_id"] = device.device_id
+                outcome["hostname"] = device.hostname
             results.append(outcome)
         except Exception as exc:
             results.append({"vendor": vendor, "status": "failed", "error": str(exc)})
@@ -540,7 +791,13 @@ def generate_compliance_pdf(uploads):
             if r.get("reason"):
                 story.append(Paragraph(f'<i>{r["reason"]}</i>', styles["Normal"]))
             story.append(Spacer(1, 8))
-
+            if upload.remediation_json:
+             story.append(Paragraph("Recommended Remediation", styles["Heading2"]))
+             for p in upload.remediation_json:
+                story.append(Paragraph(f'<b>[{escape(p["rule_id"])}] {escape(p["name"])}</b>', styles["Normal"]))
+                for cmd in p.get("commands", []):
+                    story.append(Paragraph(escape(str(cmd)), styles["Code"]))
+                story.append(Spacer(1, 8))
         story.append(PageBreak())  # next device starts on a new page
 
     doc.build(story)
@@ -548,32 +805,120 @@ def generate_compliance_pdf(uploads):
     return buffer
 
 
+# @api_view(["POST"])
+# def normalize_upload(request):
+#     """POST /api/normalize/  (files + vendor). Normalizes only, no compliance check."""
+#     files = request.FILES.getlist("config")
+#     vendors = request.data.getlist("vendor")
+#     if not files:
+#         return Response({"error": "No config file(s) provided."}, status=400)
+
+#     instructions = _load_json(INSTRUCTIONS_PATH)
+#     schema = _load_json(SCHEMA_PATH)
+
+#     results = []
+#     for i, file_obj in enumerate(files):
+#         vendor = vendors[i] if i < len(vendors) else "unknown"
+#         raw_text = file_obj.read().decode("utf-8", errors="ignore")
+#         if len(raw_text.strip()) < 10:
+#             results.append({"vendor": vendor, "status": "failed", "error": "Config file empty or too short."})
+#             continue
+#         config_text, source_format = ingest(raw_text, vendor)
+#         outcome = _normalize_single_config(config_text, vendor, instructions, schema)
+#         outcome["source_format"] = source_format
+#         results.append(outcome)
+
+#     return Response({"count": len(results), "results": results})
+
+
 @api_view(["POST"])
 def normalize_upload(request):
-    """POST /api/normalize/  (files + vendor). Normalizes only, no compliance check."""
+    """POST /api/normalize/
+    Form fields: config (file, repeatable), device_id (one per file, same order).
+    Normalizes only; no compliance report. Each result carries the upload id,
+    the normalized baseline and the list of items waiting for human review.
+    The report is generated later by POST /api/uploads/<id>/audit/.
+    A registered device is the source of truth for the vendor."""
     files = request.FILES.getlist("config")
     vendors = request.data.getlist("vendor")
+    device_ids = request.data.getlist("device_id")
     if not files:
         return Response({"error": "No config file(s) provided."}, status=400)
-
+ 
     instructions = _load_json(INSTRUCTIONS_PATH)
     schema = _load_json(SCHEMA_PATH)
-
+ 
     results = []
     for i, file_obj in enumerate(files):
         vendor = vendors[i] if i < len(vendors) else "unknown"
+ 
+        device = None
+        device_id = (device_ids[i] if i < len(device_ids) else "").strip()
+        if device_id:
+            device = Device.objects.filter(device_id=device_id).first()
+            if device is None:
+                results.append({"status": "failed", "error": f"Device '{device_id}' is not registered."})
+                continue
+            vendor = device.vendor
+ 
         raw_text = file_obj.read().decode("utf-8", errors="ignore")
         if len(raw_text.strip()) < 10:
-            results.append({"vendor": vendor, "status": "failed", "error": "Config file empty or too short."})
+            results.append({"vendor": vendor, "status": "failed",
+                            "error": "Config file empty or too short."})
             continue
+ 
         config_text, source_format = ingest(raw_text, vendor)
-        outcome = _normalize_single_config(config_text, vendor, instructions, schema)
+        try:
+            outcome = _normalize_single_config(config_text, vendor, instructions, schema)
+        except Exception as exc:
+            results.append({"vendor": vendor, "status": "failed", "error": str(exc)})
+            continue
+ 
         outcome["source_format"] = source_format
+        if device and outcome.get("id"):
+            # Link the upload to its device so PUSH can later save a snapshot.
+            DeviceUpload.objects.filter(id=outcome["id"]).update(device=device)
+            outcome["device_id"] = device.device_id
+            outcome["hostname"] = device.hostname
         results.append(outcome)
-
+ 
     return Response({"count": len(results), "results": results})
+ 
 
-# new api added
+# # new api added
+# @api_view(["POST"])
+# def audit_upload(request, upload_id):
+#     """POST /api/uploads/<id>/audit/  body: {"framework": "CIS" | "NIST" | "STIG" | "ISO"}"""
+#     requested = (request.data.get("framework") or "").upper().strip()
+#     if requested and requested not in SUPPORTED_FRAMEWORKS:
+#         return Response({"error": f"framework must be one of {', '.join(SUPPORTED_FRAMEWORKS)}."}, status=400)
+#     framework = _resolve_framework(requested)
+
+#     try:
+#         upload = DeviceUpload.objects.get(id=upload_id)
+#     except DeviceUpload.DoesNotExist:
+#         return Response({"error": "Not found."}, status=404)
+#     if not upload.baseline_json:
+#         return Response({"error": "Upload has no normalized baseline yet."}, status=400)
+
+#     # Pick up any mappings a human approved since normalization
+#     baseline = upload.baseline_json
+#     if upload.original_config_text:
+#         memories = lookup_config_memories(upload.original_config_text, upload.vendor)
+#         baseline = apply_approved_mappings(baseline, memories)
+
+#     report = compliance_engine(baseline, _load_rules(framework, upload.vendor))
+#     report["framework"] = framework
+#     report["framework_label"] = FRAMEWORK_LABELS[framework]
+
+#     upload.baseline_json = baseline
+#     upload.compliance_report = report
+#     upload.status = "done"
+#     upload.save()
+#     _take_snapshot(upload, baseline, report["summary"])
+#     return Response(DeviceUploadSerializer(upload).data)
+
+
 @api_view(["POST"])
 def audit_upload(request, upload_id):
     """POST /api/uploads/<id>/audit/  body: {"framework": "CIS" | "NIST" | "STIG" | "ISO"}"""
@@ -594,6 +939,7 @@ def audit_upload(request, upload_id):
     if upload.original_config_text:
         memories = lookup_config_memories(upload.original_config_text, upload.vendor)
         baseline = apply_approved_mappings(baseline, memories)
+    baseline = _apply_field_decisions(baseline, upload.vendor)      # NEW: field-level human answers
 
     report = compliance_engine(baseline, _load_rules(framework, upload.vendor))
     report["framework"] = framework
@@ -605,7 +951,6 @@ def audit_upload(request, upload_id):
     upload.save()
     _take_snapshot(upload, baseline, report["summary"])
     return Response(DeviceUploadSerializer(upload).data)
-
 
 @api_view(["GET"])
 def list_frameworks(request):
@@ -745,14 +1090,16 @@ def propose_remediation(request, upload_id):
     except DeviceUpload.DoesNotExist:
         return Response({"error": "Not found."}, status=404)
 
-    if not upload.compliance_report:
-        return Response({"error": "No compliance report available for this upload."}, status=400)
+    if upload.remediation_json and not request.data.get("refresh"):
+        return Response({"upload_id": upload.id, "proposals": upload.remediation_json, "cached": True})
 
     instructions = _load_json(INSTRUCTIONS_PATH)
     failed_rules = [r for r in upload.compliance_report["results"] if r["status"] == "Fail"]
 
     proposals = generate_remediation_commands(upload.baseline_json, failed_rules, instructions)
-    return Response({"upload_id": upload.id, "proposals": proposals})
+    upload.remediation_json = proposals
+    upload.save(update_fields=["remediation_json"])
+    return Response({"upload_id": upload.id, "proposals": proposals, "cached": False})
 
 
 @api_view(["POST"])
