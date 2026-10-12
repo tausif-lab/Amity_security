@@ -1,7 +1,6 @@
 set system services ssh protocol-version v2
 set system syslog file messages any any
 set system login message "Unauthorized access prohibited"
-set system services web-management http
 set protocols lldp interface all
 set system host-name Core-SW-01
 set system ntp server 10.0.0.1

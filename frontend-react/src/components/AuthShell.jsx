@@ -10,7 +10,7 @@ export default function AuthShell({ title, subtitle, children, footer }) {
       <header className="flex items-center justify-between px-8 py-5">
         <Link to="/" className="flex items-center gap-2 text-lg font-bold tracking-widest">
           <Shield className="w-5 h-5" />
-          Suraksha<span className="font-light">Asthri</span>
+          Suraksha<span className="font-light">Asthra</span>
         </Link>
         <Link to="/" className="text-xs text-gray-500 hover:text-white transition-colors">
           // Back to home

@@ -38,7 +38,7 @@ export default function Dashboard() {
       <header className="w-full flex justify-between items-center px-8 py-5 border-b border-gray-800 shrink-0">
         <div className="flex items-center gap-2 text-xl font-bold tracking-widest">
           <Shield className="w-5 h-5" />
-          Suraksha<span className="font-light">Asthri</span>
+          Suraksha<span className="font-light">Asthra</span>
           <span className="ml-4 text-xs bg-white text-black px-2 py-0.5 tracking-widest hidden sm:inline">
             AUDITOR WORKSPACE
           </span>

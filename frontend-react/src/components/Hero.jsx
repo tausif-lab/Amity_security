@@ -19,7 +19,7 @@ export default function Hero() {
 
         <div className="flex items-center gap-2 text-lg md:text-xl font-bold tracking-widest absolute left-1/2 -translate-x-1/2">
           <Shield className="w-5 h-5" />
-          Suraksha<span className="font-light">Asthri</span>
+          Suraksha<span className="font-light">Asthra</span>
         </div>
 
         <div className="flex gap-3 ml-auto">
@@ -52,7 +52,7 @@ export default function Hero() {
             COMPLIANCE AUDITOR
           </h1>
           <p className="text-gray-400 max-w-md text-xs leading-relaxed mb-8">
-            Suraksha Asthri is a multi-vendor compliance auditing and monitoring
+            Suraksha Asthra is a multi-vendor compliance auditing and monitoring
             platform that continuously verifies vendor controls, detects risk in
             real time and strengthens your organization's security posture.
           </p>

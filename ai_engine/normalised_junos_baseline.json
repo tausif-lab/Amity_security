@@ -49,7 +49,6 @@
     "enable secret type7 0102030405060708",
     "username admin secret type7 0102030405060709",
     "banner motd #Unauthorized access prohibited#",
-    "ip http server",
     "cdp run",
     "crypto isakmp policy 10"
   ]

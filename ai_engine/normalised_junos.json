@@ -1,10 +1,10 @@
 {
-  "run_id": 29,
+  "run_id": 33,
   "source_vendor": "cisco",
   "target_vendor": "junos",
   "saved_path": "/Users/tausifkhan/Documents/Security_compliance_amity/SIH26-main/rag/normalised_junos.json",
   "status": "review",
-  "overall_confidence": 0.685,
+  "overall_confidence": 0.673,
   "confidence_by_category": {
     "Global Systems": 0.944,
     "Unmapped": 0.2,
@@ -14,7 +14,6 @@
     "set system services ssh protocol-version v2",
     "set system syslog file messages any any",
     "set system login message \"Unauthorized access prohibited\"",
-    "set system services web-management http",
     "set protocols lldp interface all",
     "set system host-name Core-SW-01",
     "set system ntp server 10.0.0.1",
@@ -29,7 +28,7 @@
     "# UNMAPPED: crypto isakmp policy 10",
     "#   reason: No verified Junos equivalent for 'crypto isakmp policy 10'. Manual review required."
   ],
-  "normalized_config": "set system services ssh protocol-version v2\nset system syslog file messages any any\nset system login message \"Unauthorized access prohibited\"\nset system services web-management http\nset protocols lldp interface all\nset system host-name Core-SW-01\nset system ntp server 10.0.0.1\nset snmp community public authorization read-only\nset system syslog host 10.0.0.5\n# UNMAPPED: line vty 0 4\n#   reason: No verified Junos equivalent for 'line vty 0 4'. Manual review required.\n# UNMAPPED: enable secret <redacted>\n#   reason: Credentials cannot be translated automatically. Re-create the account on the target device with its own hashing (Cisco: `username <n> secret <hash>`; Junos: `set system login user <n> authentication encrypted-password`).\n# UNMAPPED: username admin secret <redacted>\n#   reason: Credentials cannot be translated automatically. Re-create the account on the target device with its own hashing (Cisco: `username <n> secret <hash>`; Junos: `set system login user <n> authentication encrypted-password`).\n# UNMAPPED: crypto isakmp policy 10\n#   reason: No verified Junos equivalent for 'crypto isakmp policy 10'. Manual review required.",
+  "normalized_config": "set system services ssh protocol-version v2\nset system syslog file messages any any\nset system login message \"Unauthorized access prohibited\"\nset protocols lldp interface all\nset system host-name Core-SW-01\nset system ntp server 10.0.0.1\nset snmp community public authorization read-only\nset system syslog host 10.0.0.5\n# UNMAPPED: line vty 0 4\n#   reason: No verified Junos equivalent for 'line vty 0 4'. Manual review required.\n# UNMAPPED: enable secret <redacted>\n#   reason: Credentials cannot be translated automatically. Re-create the account on the target device with its own hashing (Cisco: `username <n> secret <hash>`; Junos: `set system login user <n> authentication encrypted-password`).\n# UNMAPPED: username admin secret <redacted>\n#   reason: Credentials cannot be translated automatically. Re-create the account on the target device with its own hashing (Cisco: `username <n> secret <hash>`; Junos: `set system login user <n> authentication encrypted-password`).\n# UNMAPPED: crypto isakmp policy 10\n#   reason: No verified Junos equivalent for 'crypto isakmp policy 10'. Manual review required.",
   "ir": {
     "vendor": "cisco",
     "interfaces": [],
@@ -74,7 +73,6 @@
         "enable secret type7 0102030405060708",
         "username admin secret type7 0102030405060709",
         "banner motd #Unauthorized access prohibited#",
-        "ip http server",
         "cdp run",
         "crypto isakmp policy 10"
       ],
@@ -247,18 +245,6 @@
       "evidence": []
     },
     {
-      "source_line": "ip http server",
-      "target_command": "set system services web-management http",
-      "mapping": "table",
-      "category": "Other",
-      "confidence": 0.78,
-      "validated": true,
-      "llm_assisted": false,
-      "memorized": false,
-      "reasons": [],
-      "evidence": []
-    },
-    {
       "source_line": "cdp run",
       "target_command": "set protocols lldp interface all",
       "mapping": "table",
@@ -304,16 +290,16 @@
   "txt_path": "/Users/tausifkhan/Documents/Security_compliance_amity/SIH26-main/ai_engine/sample_config_to_junos.txt",
   "ai_engine_handoff": {
     "success": true,
-    "upload_id": "ab6d7ad2-7d73-4840-9f93-ab2a3d4b7b9e",
+    "upload_id": "4f3cf372-2f99-4a3d-a423-bcd7bfbb44e4",
     "status": "review",
     "compliance_report": {
       "summary": {
         "total": 18,
-        "passed": 3,
-        "failed": 8,
+        "passed": 4,
+        "failed": 7,
         "unknown": 6,
         "manual": 1,
-        "critical_high": 2
+        "critical_high": 1
       },
       "results": [
         {
@@ -447,8 +433,8 @@
           "severity": "High",
           "level": "Level 1",
           "description": "",
-          "status": "Fail",
-          "actual": true
+          "status": "Pass",
+          "actual": false
         },
         {
           "rule_id": "CIS-6.10.2.2",
@@ -584,10 +570,10 @@
       "vendor": "junos",
       "banners": {
         "motd": null,
-        "login": null
+        "login": "Unauthorized access prohibited"
       },
       "logging": {
-        "local_buffered": false,
+        "local_buffered": true,
         "remote_servers": [
           "10.0.0.5"
         ]
@@ -603,22 +589,29 @@
       "interfaces": [],
       "management": {
         "snmp": {
-          "version": "v1",
+          "version": null,
           "community_strings": [
             "public"
           ]
         },
         "ssh_version": 2,
-        "http_enabled": true,
+        "http_enabled": false,
         "https_enabled": false,
         "telnet_enabled": false
       },
       "os_version": null,
       "raw_commands": [
-        "line vty 0 4",
-        "enable secret <redacted>",
+        "set system services ssh protocol-version v2",
+        "set system syslog file messages any any",
+        "set system login message \"Unauthorized access prohibited\"",
+        "set protocols lldp interface all",
+        "set system host-name Core-SW-01",
+        "set system ntp server 10.0.0.1",
+        "set snmp community public authorization read-only",
+        "set system syslog host 10.0.0.5",
+        "crypto isakmp policy 10",
         "username admin secret <redacted>",
-        "crypto isakmp policy 10"
+        "enable secret <redacted>"
       ],
       "authentication": {
         "aaa_methods": [],
@@ -628,31 +621,25 @@
     "errors": null,
     "normalization_review": [
       {
-        "memory_id": 3,
+        "memory_id": 16,
         "command": "line vty 0 4",
-        "proposed_meaning": "Unknown command for Cisco devices. Needs manual review.",
+        "proposed_meaning": "Configuration for vty lines, possibly used for secure telnet connections. May require manual review and correction.",
+        "confidence": 0.2
+      },
+      {
+        "memory_id": 17,
+        "command": "crypto isakmp policy 10",
+        "proposed_meaning": "IKE policy configuration, likely used for IPsec. May require manual review and correction.",
         "confidence": 0.1
-      },
-      {
-        "memory_id": 4,
-        "command": "enable secret <redacted>",
-        "proposed_meaning": "Cisco enable secret command. Needs manual review.",
-        "confidence": 0.5
-      },
-      {
-        "memory_id": 5,
-        "command": "username admin secret <redacted>",
-        "proposed_meaning": "Cisco username admin secret command. Needs manual review.",
-        "confidence": 0.5
       }
     ]
   },
   "summary": {
     "total": 18,
-    "passed": 3,
-    "failed": 8,
+    "passed": 4,
+    "failed": 7,
     "unknown": 6,
     "manual": 1,
-    "critical_high": 2
+    "critical_high": 1
   }
 }
