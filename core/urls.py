@@ -3,6 +3,7 @@ from . import views
 from . import device_views
 from . import snapshot_views
 from . import analysis_views
+from . import schedule_views
 urlpatterns = [
     path("devices/", device_views.devices, name="devices"),
     path("devices/<str:device_id>/", device_views.device_detail, name="device_detail"),
@@ -33,4 +34,10 @@ urlpatterns = [
     
     path("analysis/query/", analysis_views.ask_devices, name="ask_devices"),
     path("analysis/query/fields/", analysis_views.ask_devices_fields, name="ask_devices_fields"),
+    
+    path("schedules/", schedule_views.schedules, name="schedules"),
+    path("schedules/<int:schedule_id>/", schedule_views.schedule_detail, name="schedule_detail"),
+    path("schedules/<int:schedule_id>/run-now/", schedule_views.schedule_run_now, name="schedule_run_now"),
+    path("devices/<str:device_id>/audits/", schedule_views.device_audits, name="device_audits"),
+    path("audit-runs/<int:run_id>/", schedule_views.audit_run_detail, name="audit_run_detail"),
 ]

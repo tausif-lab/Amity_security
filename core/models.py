@@ -206,4 +206,36 @@ class QueryLog(models.Model):
  
     class Meta:
         ordering = ["-executed_at"]
+
+
+class AuditSchedule(models.Model):
+    """Re-audit the latest pushed snapshot of every selected device on a timer."""
+    framework = models.CharField(max_length=20, default="CIS")
+    devices = models.ManyToManyField(Device, related_name="audit_schedules")
+    interval_minutes = models.PositiveIntegerField()               # 1, 2, 60, 120, 1440, ...
+    daily_at = models.TimeField(null=True, blank=True)             # only for whole-day intervals
+    timezone = models.CharField(max_length=50, default="UTC")      # how daily_at is read
+    enabled = models.BooleanField(default=True)
+    next_run_at = models.DateTimeField(db_index=True)
+    last_run_at = models.DateTimeField(null=True, blank=True)
+    created_by = models.CharField(max_length=150)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class AuditRun(models.Model):
+    """One scheduled audit of one device, with its timestamp. Written even when skipped."""
+    STATUS_CHOICES = [("ok", "OK"), ("skipped", "Skipped"), ("error", "Error")]
+    schedule = models.ForeignKey(AuditSchedule, on_delete=models.SET_NULL, null=True, blank=True,
+                                 related_name="runs")
+    device = models.ForeignKey(Device, on_delete=models.PROTECT, related_name="audit_runs")
+    framework = models.CharField(max_length=20)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES)
+    message = models.CharField(max_length=500, blank=True)
+    result = models.ForeignKey(ComplianceResult, on_delete=models.SET_NULL, null=True, blank=True,
+                               related_name="runs")
+    ran_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-ran_at", "-id"]
+        indexes = [models.Index(fields=["device", "-ran_at"])]
  
